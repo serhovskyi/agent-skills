@@ -7,13 +7,13 @@ Personal agent skills for AI coding assistants — focused on Grocy meal plannin
 Install on any supported agent (Claude Code, Cursor, Windsurf, OpenCode, and 70+ others):
 
 ```bash
-npx skills@latest add yura1106/llm_skills
+npx skills@latest add serhovskyi/llm_skills
 ```
 
 Or, for manual linking to Claude Code and compatible harnesses:
 
 ```bash
-git clone https://github.com/yura1106/llm_skills ~/.llm_skills
+git clone https://github.com/serhovskyi/llm_skills ~/.llm_skills
 bash ~/.llm_skills/scripts/link-skills.sh
 ```
 
@@ -73,7 +73,7 @@ the skill file in place *is* editing the repo. Publishing is a single command.
 
 ```bash
 # One-time setup
-git clone git@github.com:yura1106/llm_skills.git ~/llm_skills
+git clone git@github.com:serhovskyi/llm_skills.git ~/llm_skills
 bash ~/llm_skills/scripts/link-skills.sh
 ```
 
