@@ -1,10 +1,10 @@
 {
-  "name": "serhovskyi-llm-skills",
-  "version": "1.0.0",
-  "description": "Yuriy's personal agent skills for Grocy meal planning and cooking",
+  "name": "serhovskyi-agent-skills",
+  "version": "2.0.0",
+  "description": "Yuriy's personal agent skills — the wave pipeline for executing multi-plan features",
   "repository": {
     "type": "git",
-    "url": "https://github.com/serhovskyi/llm_skills"
+    "url": "https://github.com/serhovskyi/agent-skills"
   },
   "license": "MIT",
   "packageManager": "npm@10.9.4"

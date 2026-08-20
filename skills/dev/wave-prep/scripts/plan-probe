@@ -1,0 +1,351 @@
+#!/usr/bin/env python3
+"""Check a plan against the tree it will run on. Evidence, never a verdict.
+
+A plan goes stale the moment a neighbouring link lands: A0 killed six addresses the
+x2b plan cites. This finds those addresses mechanically — every `file:line` citation
+is re-found by reading the line, because a line number is a position, not a fact.
+
+Pass the wave's plans in execution order. Paths a plan Creates or Tests count as existing
+for every plan after it, so a legitimate forward reference is not reported as missing. A
+`Test:` target collides with nothing: plans extend an existing spec as often as they add one.
+
+usage:
+  plan-probe PLAN [PLAN...]          [--quiet]
+exit:
+  0 nothing to look at   1 something needs a human or a subagent
+"""
+
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+# The output carries Δ, → and — ; a legacy-codepage console (Windows cp1251/cp437)
+# raises UnicodeEncodeError on the first one and the digest is lost.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+FENCE = re.compile(r"^\s*(```|~~~)")
+FILE_ENTRY = re.compile(
+    r"^\s*[-*][ \t]+(Create|Modify|Test|Delete|Edit|New|Update|Read)[ \t]*:[ \t]*(.+)$"
+)
+PATH_IN_TICKS = re.compile(r"`([^`\n]+)`")
+EXT = r"ts|tsx|vue|js|mjs|cjs|py|json|md|yml|yaml|toml|cfg|sh|sql|html|css"
+CITATION = re.compile(rf"([\w./@{{}},*-]+\.(?:{EXT})):(\d+)(?:-(\d+))?")
+PATH_SHAPE = re.compile(rf"^[@\w][\w.@/{{}},*-]*(?:\.(?:{EXT})|/[\w.@{{}},*-]+)$")
+MUST_EXIST = {"Modify", "Delete", "Edit", "Update", "Read"}
+ALIASES = {"@/": "frontend/src/"}
+
+
+def expand_braces(text):
+    m = re.search(r"\{([^{}]*)\}", text)
+    if not m:
+        return [text]
+    out = []
+    for part in m.group(1).split(","):
+        out += expand_braces(text[: m.start()] + part + text[m.end() :])
+    return out
+
+
+class Tree:
+    """The tracked tree, indexed once, so a bare filename citation can be resolved."""
+
+    def __init__(self, root):
+        self.root = Path(root)
+        listing = subprocess.run(
+            ["git", "-C", str(root), "ls-files"], capture_output=True, text=True, check=True
+        ).stdout.splitlines()
+        self.tracked = set(listing)
+        self.by_name = {}
+        for p in listing:
+            self.by_name.setdefault(Path(p).name, []).append(p)
+        self.packages = set()
+        for pj in (self.root / "frontend/package.json", self.root / "package.json"):
+            if pj.exists():
+                data = json.loads(pj.read_text(encoding="utf-8"))
+                for field in ("dependencies", "devDependencies", "peerDependencies"):
+                    self.packages |= set(data.get(field, {}))
+
+    def is_package_path(self, token):
+        """`flatpickr/dist/flatpickr.min.css` is real and lives in node_modules, not here."""
+        parts = token.split("/")
+        return parts[0] in self.packages or "/".join(parts[:2]) in self.packages
+
+    def resolve(self, cited):
+        """A dead path must be reported as a dead path, not as an ambiguous basename."""
+        if cited in self.tracked:
+            return cited, None
+        if "/" in cited:
+            tail = [h for h in self.tracked if h.endswith("/" + cited)]
+            if len(tail) == 1:
+                return tail[0], None
+            if len(tail) > 1:
+                return None, f"ambiguous ({len(tail)} paths end with it)"
+            moved = self.by_name.get(Path(cited).name, [])
+            if moved:
+                return None, f"path gone; that filename now lives at {moved[0]}" + (
+                    f" (+{len(moved) - 1} more)" if len(moved) > 1 else ""
+                )
+            return None, "path gone, and no file of that name is tracked"
+        hits = self.by_name.get(cited, [])
+        if len(hits) == 1:
+            return hits[0], None
+        if len(hits) > 1:
+            return None, f"ambiguous ({len(hits)} files share this name)"
+        return None, "not tracked"
+
+    def matches(self, pattern):
+        """Existence, brace- and glob-aware, by path suffix.
+
+        Plans name files relative to whichever subtree they are discussing —
+        `src/tests/setup.ts` and `schemas/recipe.py` are both real. Demanding a
+        root-relative path reports two dozen live files as dead and buries the one
+        address that actually died.
+        """
+        for candidate in expand_braces(pattern):
+            if any(ch in candidate for ch in "*?["):
+                if list(self.root.glob(candidate)) or list(self.root.glob("**/" + candidate)):
+                    continue
+                return False
+            if (self.root / candidate).exists():
+                continue
+            if any(t == candidate or t.endswith("/" + candidate) for t in self.tracked):
+                continue
+            return False
+        return True
+
+    def has_dir(self, d):
+        """A file a plan will create sits in a live directory; a dead address does not."""
+        d = d.rstrip("/")
+        if not d or d == ".":
+            return True
+        return (self.root / d).is_dir() or any(
+            t.startswith(d + "/") or f"/{d}/" in t for t in self.tracked
+        )
+
+    def line_at(self, path, n):
+        try:
+            lines = (self.root / path).read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            return None
+        return lines[n - 1] if 0 < n <= len(lines) else None
+
+
+LINE_SUFFIX = re.compile(r":\d+(?:[-,]\d+)*$")
+
+
+def normalize_entry(raw):
+    """A Files: entry may carry a line suffix, an alias, or plain prose.
+
+    `…/lateResponseExempt.ts:166` is a citation, not a filename; `@/modules/x` is an
+    alias; `12 test files that import the drawer` is a sentence. Checking any of them
+    for existence reports a defect whose cause is the parser, not the plan.
+    """
+    path = LINE_SUFFIX.sub("", raw.strip().rstrip(",;."))
+    if not path or " " in path:
+        return None
+    if path.endswith("/"):
+        return path
+    if not PATH_SHAPE.match(path):
+        return None
+    return under_alias(path)[0]
+
+
+HAS_EXT = re.compile(rf"\.(?:{EXT})\b")
+
+
+def looks_addressed(token):
+    """An entry meant as an address, not as a name.
+
+    A **Files:** entry may legitimately hold an i18n key, a lint rule or a package alias;
+    only something carrying a separator or a file extension was meant to point at a file,
+    and only that is worth telling the reader nobody checked it.
+    """
+    return bool(token) and not any(ch.isspace() for ch in token) and (
+        "/" in token or HAS_EXT.search(token)
+    )
+
+
+def file_entries(lines):
+    """One entry may name several paths; taking only the first hid a dead address.
+
+    An entry the parser cannot shape into a path is yielded with `None`, never dropped:
+    a silently swallowed `Modify:` is a target nobody checked and nobody was told about.
+    """
+    in_fence = False
+    for i, line in enumerate(lines, 1):
+        if FENCE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        m = FILE_ENTRY.match(line)
+        if m:
+            ticked = PATH_IN_TICKS.findall(m.group(2))
+            for raw in ticked or [m.group(2)]:
+                yield m.group(1), normalize_entry(raw), raw, i
+
+
+def candidate_paths(lines):
+    """Every token that looks like a repo path, wherever it stands.
+
+    A plan names files in prose, in tables, in import statements and in `git add`
+    lines — not only in **Files:** blocks. The six addresses A0 killed in the x2b plan
+    stood in a table, in a fence and in an alias import; a **Files:**-only net saw none.
+    """
+    found = {}
+    in_fence = False
+    for i, line in enumerate(lines, 1):
+        if FENCE.match(line):
+            in_fence = not in_fence
+            continue
+        tokens = PATH_IN_TICKS.findall(line)
+        if in_fence:
+            tokens += line.split()
+        for token in tokens:
+            token = token.strip().strip("'\"").rstrip(",;:.")
+            if "://" in token or not PATH_SHAPE.match(token):
+                continue
+            if "/" not in token:
+                continue
+            found.setdefault(token, i)
+    return found
+
+
+def under_alias(token):
+    for alias, prefix in ALIASES.items():
+        if token.startswith(alias):
+            rest = token[len(alias) :]
+            base = prefix + rest
+            return [base] if Path(base).suffix else [base + e for e in ("", ".ts", ".vue", "/index.ts")]
+    return [token]
+
+
+def shared_tail(a, b):
+    """Segments two paths end with. A moved file keeps its neighbourhood, not its rank in a sort."""
+    x, y = a.split("/"), b.split("/")
+    n = 0
+    while n < min(len(x), len(y)) and x[-1 - n] == y[-1 - n]:
+        n += 1
+    return n
+
+
+def citations(lines):
+    seen = {}
+    for i, line in enumerate(lines, 1):
+        for path, start, _end in CITATION.findall(line):
+            seen.setdefault((path, int(start)), i)
+    return seen
+
+
+def probe(plan, tree, created):
+    lines = Path(plan).read_text(encoding="utf-8").splitlines()
+    findings = []
+
+    for verb, pattern, raw, entry_line in file_entries(lines):
+        if pattern is None:
+            token = raw.strip()
+            if looks_addressed(token):
+                findings.append(
+                    ("UNPARSED", f"{plan}:{entry_line} → {verb}: `{token[:80]}` — not a shape this net checks")
+                )
+            continue
+        expanded = expand_braces(pattern)
+        present = tree.has_dir(pattern) if pattern.endswith("/") else tree.matches(pattern)
+        if verb == "Create":
+            created.update(expanded)
+            if present:
+                findings.append(("COLLISION", f"{verb}: {pattern} — already exists in the tree"))
+        elif verb == "Test":
+            created.update(expanded)
+        elif verb in MUST_EXIST and not present:
+            if not any(e in created for e in expanded):
+                findings.append(
+                    ("MISSING", f"{verb}: {pattern} — absent, and no earlier plan creates it")
+                )
+
+    for token, line_no in sorted(candidate_paths(lines).items(), key=lambda kv: kv[1]):
+        normal = under_alias(token)[0]
+        if tree.is_package_path(token) or any(
+            normal.startswith(e) or e.startswith(normal) for e in created
+        ):
+            continue
+        if any(tree.matches(form) for form in under_alias(token)):
+            continue
+        if not any(ch in token for ch in "*?[") and Path(token).suffix == "" and not token.startswith("@/"):
+            continue
+        base = under_alias(token)[0]
+        parent = str(Path(base).parent)
+        elsewhere = sorted(tree.by_name.get(Path(base).name, []), key=lambda c: -shared_tail(c, base))
+        if elsewhere:
+            where = elsewhere[0] + (f" (+{len(elsewhere) - 1} more)" if len(elsewhere) > 1 else "")
+            findings.append(("MOVED", f"{plan}:{line_no} → `{token}` — gone; that name now lives at {where}"))
+        elif not tree.has_dir(parent):
+            findings.append(("DEAD", f"{plan}:{line_no} → `{token}` — absent, and `{parent}/` is gone too"))
+        else:
+            findings.append(("NEW?", f"{plan}:{line_no} → `{token}` — absent, but `{parent}/` is live"))
+
+    cited = citations(lines)
+    ok = 0
+    for (path, line_no), plan_line in sorted(cited.items(), key=lambda kv: kv[1]):
+        resolved, why = tree.resolve(path)
+        if resolved is None:
+            if path in created or any(path in c for c in created):
+                continue
+            findings.append(("CITE", f"{plan}:{plan_line} → `{path}:{line_no}` — {why}"))
+            continue
+        text = tree.line_at(resolved, line_no)
+        if text is None:
+            findings.append(("CITE", f"{plan}:{plan_line} → `{path}:{line_no}` — file is shorter than that"))
+        else:
+            ok += 1
+            findings.append(("READ", f"{resolved}:{line_no}  {text.strip()[:96]}"))
+    return findings, ok, len(cited)
+
+
+def main():
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    quiet = "--quiet" in sys.argv
+    if not args:
+        sys.exit(__doc__)
+
+    tree = Tree(".")
+    created = set()
+    hard_kinds = {"MISSING", "COLLISION", "DEAD", "MOVED", "CITE"}
+    hard = 0
+    for plan in args:
+        findings, ok, total = probe(plan, tree, created)
+        blocking = [f for f in findings if f[0] in hard_kinds]
+        guesses = [f for f in findings if f[0] == "NEW?"]
+        unparsed = [f for f in findings if f[0] == "UNPARSED"]
+        hard += len(blocking)
+        print(f"\n=== {plan}")
+        print(
+            f"    citations resolved: {ok}/{total}   needs a look: {len(blocking)}   "
+            f"new-file guesses: {len(guesses)}   unparsed entries: {len(unparsed)}"
+        )
+        for kind, msg in blocking + unparsed:
+            print(f"  {kind:<9} {msg}")
+        for kind, msg in guesses[:10]:
+            print(f"  {kind:<9} {msg}")
+        if len(guesses) > 10:
+            print(f"  {'NEW?':<9} … {len(guesses) - 10} more")
+        if not quiet:
+            for kind, msg in findings:
+                if kind == "READ":
+                    print(f"  read      {msg}")
+
+    print(
+        "\nEvidence, not a verdict. MOVED means the path is gone while that filename lives elsewhere — a plan pointing at an\n"
+        "address a neighbouring link moved. DEAD means path and directory both gone. NEW? means absent\n"
+        "while its directory is live, which is what a file the plan creates looks like. UNPARSED means a\n"
+        "Files: entry named something path-shaped that this net could not check — nobody verified it.\n"
+        "Read, then decide."
+    )
+    sys.exit(1 if hard else 0)
+
+
+if __name__ == "__main__":
+    main()

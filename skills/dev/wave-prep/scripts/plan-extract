@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""Emit a plan's countable structure so the controller never reads the plan body.
+
+A prompt ledger has contradicted its own plan body in both directions. Everything
+this script prints is counted from the file, so the count and the prose cannot drift.
+
+usage:
+  plan-extract PLAN_FILE            digest: task table, files, forecast, constraints
+  plan-extract --files-tsv PLAN...  one row per file entry, for cross-plan collisions
+"""
+
+import re
+import sys
+from pathlib import Path
+
+# The output carries Δ, → and — ; a legacy-codepage console (Windows cp1251/cp437)
+# raises UnicodeEncodeError on the first one and the digest is lost.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+TASK_HEADING = re.compile(r"^(#+)[ \t]+Task[ \t]+(\d+)[ \t]*[:.]?[ \t]*(.*)$")
+FENCE = re.compile(r"^\s*(```|~~~)")
+FILE_ENTRY = re.compile(
+    r"^\s*[-*][ \t]+(Create|Modify|Test|Delete|Edit|New|Update|Read)[ \t]*:[ \t]*(.+)$"
+)
+STEP = re.compile(r"^\s*[-*][ \t]+\[[ xX]\]")
+IT_CALL = re.compile(r"\bit(?:\.each)?\s*\(")
+PATH_IN_TICKS = re.compile(r"`([^`\n]+)`")
+EXT = r"ts|tsx|vue|js|mjs|cjs|py|json|md|yml|yaml|toml|cfg|sh|sql|html|css"
+ADDRESSED = re.compile(rf"/|\.(?:{EXT})\b")
+
+FORECAST_ALIASES = ("прогноз", "forecast")
+CONSTRAINT_ALIASES = ("global constraints", "глобальні обмеження")
+
+
+def read_lines(path):
+    return Path(path).read_text(encoding="utf-8").splitlines()
+
+
+def scan(lines):
+    """Every `Task N` heading with its line span, fenced ones excluded.
+
+    A heading the fence walk cannot reach is never reported as an absence: one plan
+    lost its closing ``` when a quoted block was deleted, and three of its five tasks
+    became invisible while the count still printed.
+    """
+    tasks = []
+    in_fence = False
+    for i, line in enumerate(lines):
+        if FENCE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        m = TASK_HEADING.match(line)
+        if m:
+            tasks.append(
+                {"level": len(m.group(1)), "num": int(m.group(2)), "title": m.group(3).strip(), "start": i}
+            )
+    raw = sum(1 for line in lines if TASK_HEADING.match(line))
+    if raw > len(tasks):
+        sys.exit(
+            f"plan-extract: {len(tasks)} of {raw} 'Task N' headings are reachable — "
+            f"{raw - len(tasks)} sit inside a fenced block. Either a fence is unbalanced, or the "
+            f"plan quotes a task heading as an example; either way the counts below would be wrong."
+        )
+    for a, b in zip(tasks, tasks[1:]):
+        a["end"] = b["start"]
+    if tasks:
+        tasks[-1]["end"] = len(lines)
+    return tasks
+
+
+def body_stats(lines, task):
+    """Steps counted outside fences, it() counted inside them."""
+    steps = its = 0
+    in_fence = False
+    files = []
+    for line in lines[task["start"] : task["end"]]:
+        if FENCE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            its += len(IT_CALL.findall(line))
+            continue
+        if STEP.match(line):
+            steps += 1
+        m = FILE_ENTRY.match(line)
+        if m:
+            verb, rest = m.group(1), m.group(2)
+            ticked = PATH_IN_TICKS.findall(rest)
+            addressed = [t for t in ticked if ADDRESSED.search(t)]
+            for path in addressed or ticked[:1] or [rest.strip()]:
+                files.append((verb, path))
+    return steps, its, files
+
+
+def section(lines, aliases):
+    """Verbatim block under the first heading whose text matches an alias."""
+    start = level = None
+    in_fence = False
+    for i, line in enumerate(lines):
+        if FENCE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence or not line.startswith("#"):
+            continue
+        hashes = len(line) - len(line.lstrip("#"))
+        text = line.lstrip("#").strip().lower()
+        if start is None:
+            if any(a in text for a in aliases):
+                start, level = i, hashes
+        elif hashes <= level or TASK_HEADING.match(line):
+            return lines[start:i]
+    return lines[start:] if start is not None else []
+
+
+CAP = 60
+
+
+def trim(block):
+    while block and not block[-1].strip():
+        block.pop()
+    if len(block) > CAP:
+        block = block[:CAP] + [
+            f"  … {len(block) - CAP} more lines — the judgment subagent reads this section, you do not"
+        ]
+    return block
+
+
+def digest(path):
+    lines = read_lines(path)
+    tasks = scan(lines)
+    if not tasks:
+        sys.exit(f"plan-extract: no 'Task N' heading in {path} — refusing to report zero tasks")
+
+    levels = sorted({t["level"] for t in tasks})
+    out = [
+        f"plan: {path}",
+        f"lines: {len(lines)}   tasks: {len(tasks)}   heading level: {'/'.join('#' * n for n in levels)}",
+        "",
+        "TASKS",
+        "  #  steps  it(  title",
+    ]
+    all_files = []
+    total_its = 0
+    for t in tasks:
+        steps, its, files = body_stats(lines, t)
+        total_its += its
+        all_files.append((t["num"], files))
+        out.append(f"  {t['num']:<2} {steps:>5}  {its:>3}  {t['title'][:70]}")
+
+    out += ["", "FILES"]
+    for num, files in all_files:
+        for verb, p in files:
+            out.append(f"  T{num}  {verb:<7} {p}")
+    if not any(f for _, f in all_files):
+        out.append("  (none declared in **Files:** blocks)")
+
+    out += [
+        "",
+        f"it() IN FENCED BLOCKS: {total_its}   (cases quoted in code blocks, not a net Δ — a link",
+        "                        that deletes tests will not match its forecast, and should not)",
+    ]
+
+    for label, aliases in (("FORECAST", FORECAST_ALIASES), ("GLOBAL CONSTRAINTS", CONSTRAINT_ALIASES)):
+        block = trim(section(lines, aliases))
+        out += ["", f"{label} (verbatim)"]
+        out += [f"  {ln}" for ln in block] if block else ["  (section not found)"]
+
+    return "\n".join(out)
+
+
+def files_tsv(paths):
+    rows = []
+    for path in paths:
+        lines = read_lines(path)
+        for t in scan(lines):
+            for verb, p in body_stats(lines, t)[2]:
+                rows.append(f"{p}\t{verb}\t{Path(path).name}\tT{t['num']}")
+    return "\n".join(rows)
+
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        sys.exit(__doc__)
+    if args[0] == "--files-tsv":
+        if len(args) < 2:
+            sys.exit("plan-extract: --files-tsv needs at least one plan")
+        print(files_tsv(args[1:]))
+    else:
+        print(digest(args[0]))
+
+
+if __name__ == "__main__":
+    main()
