@@ -1,0 +1,19 @@
+{
+  "name": "wave-skills",
+  "version": "0.1.0",
+  "description": "Execute a wave of sub-plans one link per session without drowning the controller's context. Three skills — wave-prep, wave-run, wave-close — plus the evidence auditor and architecture reviewer they dispatch. An extension of superpowers' spec-driven development: the controller never reads a plan body, because six plans of one real wave are 3752 lines.",
+  "author": {
+    "name": "Yurii Serhovskyi"
+  },
+  "homepage": "https://github.com/serhovskyi/agent-skills",
+  "license": "MIT",
+  "keywords": [
+    "wave",
+    "spec-driven-development",
+    "superpowers",
+    "subagent",
+    "code-review",
+    "planning",
+    "context-economy"
+  ]
+}

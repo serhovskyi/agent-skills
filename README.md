@@ -3,20 +3,40 @@
 Personal agent skills for AI coding assistants — dev workflow tooling, starting with the
 **wave** pipeline for executing multi-plan features without drowning the controller's context.
 
+Shipped as a Claude Code **plugin**, because the skills dispatch agents and the two have to
+arrive together: a skill that dispatches a reviewer nobody installed fails at the review stage,
+which is the stage you least want to lose.
+
 ## Installation
 
-Install on any supported agent (Claude Code, Cursor, Windsurf, OpenCode, and 70+ others):
+**As a plugin — skills and agents together (recommended):**
+
+```
+/plugin marketplace add serhovskyi/agent-skills
+/plugin install wave-skills
+```
+
+**As symlinks — if you want to edit the skills as you use them:**
+
+```bash
+git clone git@github.com:serhovskyi/agent-skills.git ~/agent-skills
+bash ~/agent-skills/scripts/link-skills.sh
+```
+
+This links skills into `~/.claude/skills` and `~/.agents/skills`, and agents into
+`~/.claude/agents`. Every entry is a symlink into the clone, so the installed files **are** the
+repo — edit in place, publish with `scripts/publish.sh`. Pick one route or the other; running
+both installs the same content twice.
+
+**Skills only, no agents** — for Cursor, Windsurf, OpenCode and other Agent-Skills harnesses:
 
 ```bash
 npx skills@latest add serhovskyi/agent-skills
 ```
 
-Or, for manual linking to Claude Code and compatible harnesses:
-
-```bash
-git clone https://github.com/serhovskyi/agent-skills ~/agent-skills
-bash ~/agent-skills/scripts/link-skills.sh
-```
+The `skills` CLI has no notion of agents, so this route installs the three skills alone. Supply
+the reviewer agents yourself (see [Reviewer roster](#reviewer-roster) below) or the review stages
+have nothing to dispatch.
 
 ## Skills
 
@@ -65,23 +85,51 @@ The wave skills are an extension of, and a simplification of working with,
 | `superpowers` plugin — `spec-driven-development` | writes the sub-plans a wave consumes, into `docs/superpowers/plans/` |
 | `superpowers` plugin — `subagent-driven-development` | `wave-run` calls its `task-brief` and `review-package` scripts for the per-task machinery |
 | `python3` | the two `wave-prep` scripts |
-| **reviewer subagents** (see below) | every review stage dispatches by role |
+| **per-layer reviewer agents** (see below) | two of the four review seats ship here; the stack-specific ones are yours |
 
-### Reviewer roster — supplied by your repo
+<a id="reviewer-roster"></a>
 
-The skills dispatch reviewers **by role**, not by hardcoded name. Provide agents for the roles
-your repo actually has and record them once in `WAVE.md` § Reviewers:
+### Reviewer roster
 
-| role | used by | purpose |
+The skills dispatch reviewers **by role**, never by hardcoded name. Record the roster once in
+`WAVE.md` § Reviewers, and every link reads it from there.
+
+**Shipped with this plugin** — both are stack-agnostic, so they work in any repo:
+
+| agent | model | seat |
 |---|---|---|
-| plan reviewers — architecture + one per layer | `wave-prep` step 6 | do the plans still hold up against the tree? |
-| code reviewers — one per layer | `wave-run`, per task and over the whole link | does the code hold up? |
-| evidence auditor | `wave-run`, final review | did the gates this link claims to have moved *actually* go red, and for our reason? |
+| `gate-evidence-auditor` | opus | `wave-run`, final review — second lens |
+| `solution-architect-reviewer` | opus | `wave-prep` step 6 — plan review |
 
-The evidence auditor is the one worth building if you build only one: it reads the ledger and
-the logs, **not** the diff, and it catches gates that stayed silent — path-scoped rules, pinned
-equalities, discriminating pairs, environment-green. A wave that skipped review found four
-defects in a later pass that its green suite never saw.
+`gate-evidence-auditor` is the one worth having if you have only one. It reads the ledger, the
+report files and the logs — **not** the diff — and answers one question per gate: *did it go red,
+and for OUR reason?* Verdicts are `OURS` / `NOT OURS` / `UNPROVEN`, and it carries a twelve-class
+catalogue of ways a gate stays silent (path-scoped rules, pinned equalities, discriminating pairs
+true by absence, environment-green, …). It is read-only and will refuse to move the tree: a proof
+that needs a checkout comes back `UNPROVEN` with the exact command for you to run.
+
+**You supply these** — they encode your stack, so a shared copy would be worse than none:
+
+| role | model | what it must know | dispatched by |
+|---|---|---|---|
+| **frontend code reviewer** | sonnet | your framework and state layer (e.g. Vue 3 + TypeScript + Pinia, or React + TS + Redux). Judges a *finished diff* from a review-package file for wire-contract, reactivity, tenancy, i18n and test-falsifiability defects. Must not crawl the tree or re-run `git diff`. | `wave-run`, per task and over the whole link |
+| **backend code reviewer** | sonnet | your framework and persistence layer (e.g. FastAPI + SQLModel, or Django + ORM). Same contract, judging correctness, authorization and persistence. | `wave-run`, per task and over the whole link |
+| **frontend plan reviewer** | opus | the same stack, but reviewing a *written plan* before any code exists — what will break, judged against the target architecture rather than the legacy tree. | `wave-prep` step 6 |
+| **backend plan reviewer** | opus | ditto for the backend stack. | `wave-prep` step 6 |
+| **devops reviewer** *(optional)* | opus | your deploy, CI and migration shape — reversible migrations, table locks, backfills, workflow files. | `wave-prep` step 6, when a plan touches infra |
+
+Four properties make these work, and are worth copying from the two shipped agents:
+
+1. **Read-only.** `tools: Read, Grep, Glob, Bash`, no writes, and never `make`/tests/migrations —
+   the owner runs those.
+2. **The diff arrives as a file.** The review-package path is in the prompt; reading the tree
+   instead is what blows the context these skills exist to protect.
+3. **No scope creep.** Surface defects; never request comments, coverage percentages, or
+   gold-plating.
+4. **Falsifiability over coverage.** Ask whether a test would go red without the behavior — not
+   how many lines it touched.
+
+Vertical tasks get **both** code reviewers on the same diff file: two lenses, one package.
 
 ### Repo-specific values
 
@@ -102,23 +150,29 @@ the branch and lies the moment a link merges.
 ## Structure
 
 ```
+.claude-plugin/
+├── plugin.json                     # the plugin manifest
+└── marketplace.json                # lets the repo be added as a marketplace
+agents/
+├── gate-evidence-auditor.md        # evidence, not code — the second review lens
+└── solution-architect-reviewer.md  # plan review, before any code exists
 skills/
-└── dev/
-    ├── wave-prep/
-    │   ├── SKILL.md
-    │   ├── references/templates.md    # WAVE.md, LINK-PROMPT, registry
-    │   └── scripts/
-    │       ├── plan-extract           # countable structure of a plan
-    │       └── plan-probe             # plan vs. the live tree
-    ├── wave-run/
-    │   └── SKILL.md
-    └── wave-close/
-        ├── SKILL.md
-        └── references/templates.md    # link report, relay, post-wave prompt
+├── wave-prep/
+│   ├── SKILL.md
+│   ├── references/templates.md     # WAVE.md, LINK-PROMPT, registry
+│   └── scripts/
+│       ├── plan-extract            # countable structure of a plan
+│       └── plan-probe              # plan vs. the live tree
+├── wave-run/
+│   └── SKILL.md
+└── wave-close/
+    ├── SKILL.md
+    └── references/templates.md     # link report, relay, post-wave prompt
 ```
 
-`link-skills.sh` flattens this: `~/.claude/skills/wave-prep` regardless of the category
-directory, so categories are for humans reading the repo, not for the harness.
+`agents/` and `skills/` are discovered by convention, so the manifest names no paths. Both are
+flat: skill names must be unique, since `link-skills.sh` links by basename and the plugin loader
+expects `skills/<name>/SKILL.md`.
 
 ## Updating a skill
 
@@ -133,7 +187,8 @@ bash ~/agent-skills/scripts/link-skills.sh
 ```
 
 Now `~/.claude/skills/wave-prep/SKILL.md` points directly into
-`~/agent-skills/skills/dev/wave-prep/SKILL.md`. Edit it however you like, then publish:
+`~/agent-skills/skills/wave-prep/SKILL.md`, and `~/.claude/agents/gate-evidence-auditor.md` into
+`~/agent-skills/agents/`. Edit either however you like, then publish:
 
 ```bash
 bash ~/agent-skills/scripts/publish.sh "wave-run: name the mirror check per repo"
@@ -147,13 +202,17 @@ That's it — no copying, no separate commit step.
 manually:
 
 ```bash
-cp ~/.claude/skills/wave-prep/SKILL.md ~/agent-skills/skills/dev/wave-prep/SKILL.md
+cp ~/.claude/skills/wave-prep/SKILL.md ~/agent-skills/skills/wave-prep/SKILL.md
 bash ~/agent-skills/scripts/publish.sh "update wave-prep"
 ```
 
-Users who installed via `npx skills@latest add` pull the latest by re-running the same install
-command. Users who cloned manually just need `git pull` — the symlinks already point into the
-clone, so no relinking is needed.
+`publish.sh` stages `skills/`, `agents/` and `.claude-plugin/`, so agent and manifest edits
+travel with skill edits.
+
+Plugin users update with `/plugin update wave-skills`; `npx skills@latest add` users re-run the
+install. Users who cloned manually just need `git pull` — the symlinks already point into the
+clone, so no relinking is needed. Bump `version` in `.claude-plugin/plugin.json` when the plugin
+changes meaningfully.
 
 ### Adding a new skill
 
@@ -165,10 +224,10 @@ clone, so no relinking is needed.
    description: One-line description of when and why to invoke this skill.
    ---
    ```
-2. Create it in the repo under a category (or move it there, then re-link):
+2. Create it in the repo (or move it there, then re-link):
    ```bash
-   mkdir -p ~/agent-skills/skills/<category>/<skill-name>
-   cp ~/.claude/skills/<skill-name>/SKILL.md ~/agent-skills/skills/<category>/<skill-name>/SKILL.md
+   mkdir -p ~/agent-skills/skills/<skill-name>
+   cp ~/.claude/skills/<skill-name>/SKILL.md ~/agent-skills/skills/<skill-name>/SKILL.md
    bash ~/agent-skills/scripts/link-skills.sh
    ```
 3. Publish:
@@ -177,4 +236,23 @@ clone, so no relinking is needed.
    ```
 
 The `skills` CLI discovers any `SKILL.md` under `skills/` automatically — no registration step.
-Skill names must stay unique across categories: `link-skills.sh` links by basename.
+Skill names must stay unique: `link-skills.sh` links by basename.
+
+### Adding a new agent
+
+Drop a `<name>.md` into `agents/` with the frontmatter below, then re-run `link-skills.sh`.
+Nothing registers it — `agents/` is discovered by convention.
+
+```yaml
+---
+name: agent-name
+description: What it reviews, what it does NOT review, and when to dispatch it.
+tools: Read, Grep, Glob, Bash
+model: opus
+---
+```
+
+The `description` is what makes an agent dispatchable: state the seat it fills and the seats it
+does not, so a controller picking reviewers can tell them apart. Keep shared agents free of
+stack and repo specifics — an agent that names your framework belongs in your repo's
+`.claude/agents/`, not here.

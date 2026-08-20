@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "serhovskyi-agent-skills",
+  "description": "Yurii's personal agent skills — the wave pipeline for executing multi-plan features one link per session.",
+  "owner": {
+    "name": "Yurii Serhovskyi"
+  },
+  "plugins": [
+    {
+      "name": "wave-skills",
+      "description": "Execute a wave of sub-plans one link per session without drowning the controller's context. Three skills — wave-prep, wave-run, wave-close — plus the evidence auditor and architecture reviewer they dispatch.",
+      "author": {
+        "name": "Yurii Serhovskyi"
+      },
+      "category": "development",
+      "source": "./",
+      "homepage": "https://github.com/serhovskyi/agent-skills"
+    }
+  ]
+}
