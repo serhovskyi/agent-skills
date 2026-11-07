@@ -30,7 +30,7 @@ Not for writing plans. This skill executes nothing and plans nothing.
 |---|---|---|
 | 1 discover plans, derive order | you | grep |
 | 2 count structure | `scripts/plan-extract` | zero tokens |
-| 3 probe against the tree | `scripts/plan-probe` | zero tokens |
+| 3 probe plans and profile against the tree | `scripts/plan-probe`, `scripts/profile-probe` | zero tokens |
 | 4 judge complexity and gates | one subagent per plan | ~60 lines each |
 | 5 write wave documents | you | — |
 | 6 review gate | reviewer subagents, only if needed | — |
@@ -109,6 +109,17 @@ Read the grades — they mean different things:
 | `NEW?` | absent, but its directory is live | normally a file the plan creates — informational |
 
 Exit 1 means *something needs a look*, not *the plan is broken*.
+
+Then the profile, against the same tree:
+
+```bash
+"$WP/scripts/profile-probe" --quiet       # .claude/wave-profile.md by default
+```
+
+It re-finds every address the profile names — paths, `HEAD:<path>` tree keys, agents, make
+targets, npm scripts. A stale profile is worse than a stale plan: every dispatch of every link
+copies it. A red line is fixed in the profile before the wave documents are written, because
+WAVE.md copies from it.
 
 ## Step 4 — one judgment subagent per plan
 

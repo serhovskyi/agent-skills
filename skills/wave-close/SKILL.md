@@ -120,7 +120,19 @@ waves away.
 `WP` is the `wave-prep` skill's directory. Read the grades: `MOVED` and `DEAD` mean the
 next plan cites something this wave moved or deleted.
 
-On drift, one question: patch the plan in place (only when it is documentation-level — a
+The profile is re-probed in the same step, because a link that moves a directory, renames an
+agent or splits a make target has just made the profile cite a dead address to every later
+dispatch:
+
+```bash
+"$WP/scripts/profile-probe" --quiet
+```
+
+A red profile line is not an owner question: the link that moved the address updates the
+profile in its close, in the same commit as the relay, and the relay names the line. The
+profile is the repo's, so the fix states the new address, never the history of the move.
+
+On plan drift, one question: patch the plan in place (only when it is documentation-level — a
 path, a line reference, a name) · re-pipeline it separately (when the drift changes what
 the plan *does*). Silently patching a plan that needs a re-pipeline hides how stale it was.
 

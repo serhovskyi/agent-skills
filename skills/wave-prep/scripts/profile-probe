@@ -1,0 +1,177 @@
+#!/usr/bin/env python3
+"""Check a repo's wave profile against the tree. Evidence, never a verdict.
+
+A profile goes stale the way a plan does: a directory moves, an agent is renamed, a make
+target is split, and the profile keeps citing the old address to every dispatch. This
+re-finds every address the profile names — paths, `HEAD:<path>` tree keys, agents, make
+targets, npm scripts — and lists bare identifiers the tree no longer mentions.
+
+usage:
+  profile-probe [PROFILE]            (default: .claude/wave-profile.md)  [--quiet]
+exit:
+  0 nothing to look at   1 something needs a human
+"""
+
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+TICKS = re.compile(r"`([^`\n]+)`")
+HEAD_KEY = re.compile(r"HEAD:([\w./-]+)")
+MAKE_TARGET = re.compile(r"\bmake ([\w-]+)")
+NPM_SCRIPT = re.compile(r"\bnpm run ([\w:.-]+)")
+EXT = r"py|ts|tsx|js|mjs|cjs|vue|jsx|json|ya?ml|toml|ini|cfg|md|txt|sql|sh|lock"
+PATH_SHAPE = re.compile(rf"^\.?[\w@][\w.@/*-]*(?:\.(?:{EXT})|/[\w.@*-]*)$")
+IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{5,}$")
+SECTION = re.compile(r"^##\s+(.+?)\s*$")
+FAILING = ("MISSING", "MOVED", "KEY", "AGENT", "TARGET", "SCRIPT")
+
+
+def git(root, *args):
+    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
+
+
+class Tree:
+    def __init__(self, root):
+        self.root = root
+        self.tracked = git(root, "ls-files").stdout.splitlines()
+        self.make_targets = self._make_targets()
+        self.npm_scripts = self._npm_scripts()
+
+    def _make_targets(self):
+        makefile = self.root / "Makefile"
+        if not makefile.is_file():
+            return set()
+        text = makefile.read_text(encoding="utf-8", errors="replace")
+        return set(re.findall(r"^([\w-]+)\s*:", text, re.MULTILINE))
+
+    def _npm_scripts(self):
+        scripts = set()
+        for path in self.tracked:
+            if path.endswith("package.json") and "node_modules/" not in path:
+                try:
+                    data = json.loads((self.root / path).read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                scripts |= set((data.get("scripts") or {}).keys())
+        return scripts
+
+    def exists(self, token):
+        token = token.rstrip("/")
+        if "*" in token:
+            return any(self.root.glob(token))
+        return (self.root / token).exists()
+
+    def elsewhere(self, token):
+        tail = token.rstrip("/")
+        return sorted(
+            {
+                p[: p.index(tail) + len(tail)]
+                for p in self.tracked
+                if f"/{tail}/" in f"/{p}/" or p.endswith(f"/{tail}")
+            }
+        )[:3]
+
+    def head_has(self, path):
+        return git(self.root, "cat-file", "-e", f"HEAD:{path}").returncode == 0
+
+    def mentions(self, word, profile):
+        hits = git(self.root, "grep", "-lw", "--", word).stdout.split()
+        return any(h != profile for h in hits)
+
+
+def agent_exists(root, name):
+    homes = [root / ".claude" / "agents", Path.home() / ".claude" / "agents"]
+    if any((home / f"{name}.md").exists() for home in homes):
+        return True
+    plugins = Path.home() / ".claude" / "plugins"
+    return plugins.is_dir() and any(plugins.glob(f"**/agents/{name}.md"))
+
+
+def tokens(line):
+    found = TICKS.findall(line)
+    if line.startswith("    ") and not line.strip().startswith("|"):
+        found.append(line.strip())
+    return found
+
+
+def probe(profile_path, tree, quiet):
+    rel = profile_path.resolve().relative_to(tree.root).as_posix()
+    rows = []
+    section = ""
+    in_fence = False
+    for n, line in enumerate(profile_path.read_text(encoding="utf-8").splitlines(), 1):
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+        heading = SECTION.match(line)
+        if heading and not in_fence:
+            section = heading.group(1)
+            continue
+        for token in tokens(line):
+            if "<" in token:
+                continue
+            for key in HEAD_KEY.findall(token):
+                if not tree.head_has(key):
+                    rows.append(("KEY", n, f"HEAD:{key}", "no such path at HEAD"))
+            for target in MAKE_TARGET.findall(token):
+                if tree.make_targets and target not in tree.make_targets:
+                    rows.append(("TARGET", n, f"make {target}", "no such Makefile target"))
+            for script in NPM_SCRIPT.findall(token):
+                if tree.npm_scripts and script not in tree.npm_scripts:
+                    rows.append(("SCRIPT", n, f"npm run {script}", "no package.json defines it"))
+            words = token.split()
+            for word in words:
+                word = word.strip(".,;:()")
+                if word.startswith(("HEAD:", "-", "/", "~", "http")) or "=" in word:
+                    continue
+                if (PATH_SHAPE.match(word) and "/" in word) or re.search(rf"\.(?:{EXT})$", word):
+                    if tree.exists(word):
+                        continue
+                    seen = tree.elsewhere(word)
+                    if seen:
+                        rows.append(("MOVED", n, word, "found as " + ", ".join(seen)))
+                    else:
+                        rows.append(("MISSING", n, word, "not in the tree"))
+                elif section == "Reviewers" and re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)+", word):
+                    if not agent_exists(tree.root, word):
+                        rows.append(("AGENT", n, word, "no agent file, project, user or plugin"))
+                elif len(words) == 1 and IDENTIFIER.match(word) and not tree.mentions(word, rel):
+                    rows.append(("UNSEEN", n, word, "no tracked file but the profile mentions it"))
+    print(f"=== {rel}")
+    for grade, n, token, note in rows:
+        if quiet and grade not in FAILING:
+            continue
+        print(f"  {grade:<8} line {n:<4} {token}  — {note}")
+    failing = sum(1 for row in rows if row[0] in FAILING)
+    unseen = len(rows) - failing
+    print(f"    needs a look: {failing}   unseen identifiers: {unseen}")
+    print(
+        "\nEvidence, not a verdict. MOVED: the path is gone and its tail lives elsewhere, or the\n"
+        "profile names it relative to a subdirectory — read the line. KEY/AGENT/TARGET/SCRIPT: the\n"
+        "address is gone. UNSEEN: a bare name nothing tracked mentions — a renamed gate, or a word\n"
+        "from outside the repo (an env var, a tool's output). Read, then decide."
+    )
+    return 1 if failing else 0
+
+
+def main():
+    args = [a for a in sys.argv[1:] if a != "--quiet"]
+    quiet = "--quiet" in sys.argv[1:]
+    top = git(Path.cwd(), "rev-parse", "--show-toplevel")
+    if top.returncode != 0:
+        sys.exit("profile-probe: not inside a git repository")
+    root = Path(top.stdout.strip())
+    profile = Path(args[0]) if args else root / ".claude" / "wave-profile.md"
+    if not profile.is_file():
+        sys.exit(f"profile-probe: no profile at {profile} — wave-prep writes one")
+    sys.exit(probe(profile, Tree(root), quiet))
+
+
+if __name__ == "__main__":
+    main()

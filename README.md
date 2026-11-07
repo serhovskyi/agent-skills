@@ -61,12 +61,13 @@ dispatches, measures and records.
 be closed from a fresh session when the executing one died, and the owner's decisions are never
 asked by a session one message from a compaction.
 
-Two zero-token scripts do the counting, so prose and reality cannot drift:
+Three zero-token scripts do the counting, so prose and reality cannot drift:
 
 ```bash
 WP=~/.claude/skills/wave-prep
 "$WP/scripts/plan-extract" docs/superpowers/plans/<wave>-<link>.md      # task table, files, forecast
 "$WP/scripts/plan-probe"   docs/superpowers/plans/<wave>-{a,b,c}.md -q  # MOVED / DEAD / MISSING / COLLISION
+"$WP/scripts/profile-probe" --quiet                                       # the repo profile vs. the tree
 ```
 
 `plan-probe` catches the failure mode these skills were built around: a plan goes stale the
@@ -84,7 +85,7 @@ The wave skills are an extension of, and a simplification of working with,
 |---|---|
 | `superpowers` plugin — `spec-driven-development` | writes the sub-plans a wave consumes, into `docs/superpowers/plans/` |
 | `superpowers` plugin — `subagent-driven-development` | `wave-run` calls its `task-brief` and `review-package` scripts for the per-task machinery |
-| `python3` | the two `wave-prep` scripts |
+| `python3` | the three `wave-prep` scripts |
 | **per-layer reviewer agents** (see below) | two of the four review seats ship here; the stack-specific ones are yours |
 | **`.claude/wave-profile.md`** in your repo (see [below](#repo-profile)) | your commands, roster and stack traps; `wave-prep` writes it on first use |
 
@@ -160,12 +161,16 @@ values.
 | **Rules for every link** | rules appended to the WAVE's numbered list | a gate that never counts as moved, and why |
 | **Close report** | the lint, boundary, type-check and CI commands the link report names | `npm run lint` · `tsc --noEmit` · `make ci` |
 
-Three properties keep a profile useful:
+Four properties keep a profile useful:
 
 1. **Commands, not descriptions.** A line an implementer copies must run as written.
 2. **Every rule carries its reason.** One paragraph under the block: which failure it exists
    because of, measured. A rule without one gets dropped by the first person who finds it odd.
 3. **`none` is a value.** An empty section reads as "not filled in"; `none` reads as "checked".
+4. **Addresses from the repo root.** `profile-probe` re-finds every path, `HEAD:` key, agent,
+   make target and npm script the profile names, at every `wave-prep` and every link close —
+   so an architectural move turns the profile red at the close of the link that made it, and
+   that link updates it. A path written relative to a subdirectory reads as moved.
 
 The plans directory is `docs/superpowers/plans/` by default, the superpowers convention.
 
@@ -190,7 +195,8 @@ skills/
 │   ├── references/profile-example.md  # the same, filled in for an invented repo
 │   └── scripts/
 │       ├── plan-extract            # countable structure of a plan
-│       └── plan-probe              # plan vs. the live tree
+│       ├── plan-probe              # plan vs. the live tree
+│       └── profile-probe           # repo profile vs. the live tree
 ├── wave-run/
 │   └── SKILL.md
 └── wave-close/
