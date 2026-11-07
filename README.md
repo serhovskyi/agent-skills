@@ -112,9 +112,10 @@ The wave skills are an extension of, and a simplification of working with,
 |---|---|
 | `superpowers` plugin — `spec-driven-development` | writes the sub-plans a wave consumes, into `docs/superpowers/plans/` |
 | `superpowers` plugin — `subagent-driven-development` | `wave-run` calls its `task-brief` and `review-package` scripts for the per-task machinery |
-| `python3` | the three `wave-prep` scripts |
+| `python3` | the three `wave-prep` scripts; **3.11+** for `wave-harness` (it reads `harness.toml` with `tomllib`) |
 | **per-layer reviewer agents** (see below) | two of the four review seats ship here; the stack-specific ones are yours |
 | **`.claude/wave-profile.md`** in your repo (see [below](#repo-profile)) | your commands, roster and stack traps; `wave-prep` writes it on first use |
+| `wave-harness` *(optional)* | ships the evidence runner the reply contract names; without it the skills fall back to `<cmd> >> <file> 2>&1; echo "EXIT=$?" >> <file>` |
 
 <a id="reviewer-roster"></a>
 
@@ -249,6 +250,12 @@ an invented repo is [`harness/harness.example.toml`](harness/harness.example.tom
 Every rule you add carries its reason in the `reason` string: the warning is the only place the
 next session reads it.
 
+**What the guard cannot see.** `guard_bash` reads the command the agent typed, not the commands
+a script it runs will type. `bash scripts/publish.sh` is one command to it, so the `git push`
+inside is not refused; neither is a `git stash` inside a Makefile target. Put a script whose
+inner commands must stay the owner's behind your own rule (`[[guard_bash.warn_program]]` warns;
+a refusal is a deny rule added to `guard_bash.py`).
+
 ## Structure
 
 ```
@@ -327,16 +334,13 @@ cp ~/.claude/skills/wave-prep/SKILL.md ~/agent-skills/skills/wave-prep/SKILL.md
 bash ~/agent-skills/scripts/publish.sh "update wave-prep"
 ```
 
-**A publish denylist keeps private projects out.** If you develop these skills inside a private
-codebase, list its names, paths and identifiers one per line in `.git/info/publish-denylist` of
-your clone — `.git/info` is never committed, so the list itself stays private. `publish.sh`
-refuses, and unstages, any diff whose added lines contain one of them. A repo can also refuse
-the edit itself: its write hook reads the same file (the consuming repo's `guard_write` does).
+**A publish denylist keeps private projects out** — see
+[Developing inside a private project](#private-project) below.
 
 `publish.sh` stages `skills/`, `agents/`, `harness/`, `scripts/`, `.claude-plugin/`, `.github/`
 and `README.md`, so every edit travels with the skill edits.
 
-Plugin users update with `/plugin update wave-skills`; `npx skills@latest add` users re-run the
+Plugin users update with `/plugin update wave-skills` (and `wave-harness`); `npx skills@latest add` users re-run the
 install. Users who cloned manually just need `git pull` — the symlinks already point into the
 clone, so no relinking is needed. Bump `version` in `.claude-plugin/plugin.json` when the plugin
 changes meaningfully.
@@ -383,3 +387,51 @@ The `description` is what makes an agent dispatchable: state the seat it fills a
 does not, so a controller picking reviewers can tell them apart. Keep shared agents free of
 stack and repo specifics — an agent that names your framework belongs in your repo's
 `.claude/agents/`, not here.
+
+## Updating the harness
+
+`link-harness.sh` points the registered hooks and the three tools into the clone, so editing
+`harness/hooks/*.py` or `harness/bin/*` is live in the next session (hooks are read at session
+start). Run the suite before publishing — it is what CI runs:
+
+```bash
+cd ~/agent-skills && uv run --with pytest python -m pytest harness/tests -q
+```
+
+Adding a rule to `guard_bash.py`:
+
+1. **Decide the verdict.** `deny` is only for irreversible loss; a command that answers truthfully
+   and means something else is a `warn`. A warning never states a permission decision —
+   `test_the_warn_channel_cannot_answer_a_permission_prompt` holds that line.
+2. **Give it a stable id**: `decide("warn", "<rule-id>", "<reason with the loss it prevents>")`.
+3. **Witness it.** A case in `tests/test_hook_rules.py` that runs the hook on a payload and reads
+   the verdict, with `rule: <rule-id>` in its docstring. `test_hooks_are_armed.py` compares the ids
+   fired to the ids witnessed in both directions, so a rule without a witness — or a witness of a
+   rule that is gone — is red.
+4. **A new refusal moves a pin.** The deny count is pinned (`test_the_refusals_are_still_refusals`);
+   raise it in the same commit, deliberately.
+5. **A rule only your repo needs is config, not code** — `harness.toml`, above.
+
+<a id="private-project"></a>
+
+## Developing inside a private project
+
+These skills were grown inside a private codebase, and that is the normal way to keep them
+sharp: the lessons come from real links. It is also how a private project leaks into this
+public repo — an agent fixing a skill from inside that project writes the fix in that project's
+words: its commands, test names, shas, recorded output. Three things on the project's side keep
+the two apart. As with the reviewer roster, they encode your project, so a shared copy would
+be worse than none:
+
+| what | where | what it does |
+|---|---|---|
+| **publish denylist** | `.git/info/publish-denylist` of your clone (never committed) | the project's names, paths and identifiers, one per line; `publish.sh` refuses and unstages any diff whose added lines contain one |
+| **one line in the project's `CLAUDE.md`** | the project | "the wave skills and generic hooks live in `<clone>` (linked): edit there, generic words only; this repo's facts go to `.claude/wave-profile.md` / `.claude/harness.toml`" |
+| **a write guard** | the project's own PreToolUse `Write\|Edit` hook | refuses a write to `.claude/skills/<published skill>/`, `.claude/agents/<published agent>.md` or `.claude/hooks/<published hook>.py` in the project (it would shadow the link); refuses an edit into the clone that carries a denylisted word; warns on any other edit into the clone that the text is about to be public |
+
+Resolve the path with `realpath` before judging it: `~/.claude/skills/<name>/SKILL.md` *is* the
+clone once linked. List the published names from the clone at call time, never from a frozen
+list. And when the project keeps a map of its own harness, an entry under `.claude/` that the
+map does not name is worth a red test of its own: it catches a shadow copy at the next run even
+when no guard saw it written.
+
