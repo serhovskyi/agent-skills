@@ -107,8 +107,9 @@ waves away.
 
 ## Requirements
 
-The wave skills are an extension of, and a simplification of working with,
-[**superpowers**' spec-driven development](https://github.com/obra/superpowers).
+The wave skills do not work without [**superpowers**](https://github.com/obra/superpowers):
+a wave is the sub-plans its spec-driven development writes, and `wave-run` runs each task
+through its subagent-driven-development scripts.
 
 | requirement | why |
 |---|---|

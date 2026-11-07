@@ -10,7 +10,7 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 MSG="${1:-"update skills"}"
-PUBLISHED=(skills/ agents/ harness/ scripts/ .claude-plugin/ .github/ README.md .gitignore)
+PUBLISHED=(skills/ agents/ harness/ scripts/ .claude-plugin/ .github/ README.md LICENSE .gitignore)
 
 cd "$REPO"
 
