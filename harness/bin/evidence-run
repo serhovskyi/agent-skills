@@ -1,6 +1,10 @@
 #!/bin/bash
 # Usage: evidence-run <file> <command...>
 # The whole output also goes to <file>.raw.log, which *.log keeps out of git.
+if [ $# -lt 2 ]; then
+  echo "usage: evidence-run <file> <command...>" >&2
+  exit 2
+fi
 file=$1
 shift
 raw=$file.raw.log

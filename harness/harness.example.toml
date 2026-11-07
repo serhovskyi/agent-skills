@@ -39,6 +39,9 @@ reason = "prettier is not this repo's formatter; npx installs a fresh one and re
 # Warn when this project's always-loaded MEMORY.md grows past the budget, in bytes.
 memory_budget = 6144
 memory_hint = "Retired lines are listed in memory-retired."
+# The preamble warns when HEAD is on the default branch (origin/HEAD, else main, else master).
+# false for a repo that commits there by design.
+warn_on_default_branch = true
 
 [warn_pipefail]
 # The repo's own runner commands, beyond pytest/vitest/jest/make test/...

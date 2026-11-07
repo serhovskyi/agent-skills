@@ -24,20 +24,25 @@ class SummaryLine:
 
 
 class SuiteLog:
+    """The last run in the log: evidence-run appends, so an earlier run's summary and EXIT=
+    stand above it in the same file and must not be read as this run's."""
+
     EXIT = re.compile(r"^EXIT=(?P<status>\d+)$")
 
     def __init__(self, path: Path) -> None:
         self.path = path
         self.summary: list[str] = []
-        last = ""
+        self.status: int | None = None
         with path.open(encoding="utf-8", errors="surrogateescape") as stream:
             for raw in stream:
-                if raw.strip():
-                    last = raw.strip()
-                if (line := SummaryLine.of(raw)) is not None:
+                if not raw.strip():
+                    continue
+                if self.status is not None:
+                    self.summary, self.status = [], None
+                if exit_line := self.EXIT.match(raw.strip()):
+                    self.status = int(exit_line["status"])
+                elif (line := SummaryLine.of(raw)) is not None:
                     self.summary.append(line)
-        exit_line = self.EXIT.match(last)
-        self.status = int(exit_line["status"]) if exit_line else None
 
 
 class SuiteSummary:

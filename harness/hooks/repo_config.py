@@ -26,18 +26,30 @@ def repo_root(cwd: str | None = None) -> Path | None:
     return Path(result.stdout.strip()) if result.returncode == 0 else None
 
 
-def load(cwd: str | None = None) -> dict:
+def load_checked(cwd: str | None = None) -> tuple[dict, str | None]:
+    """The config, and why it is empty when a file exists but cannot be used."""
     override = os.environ.get("WAVE_HARNESS_CONFIG")
     path = Path(override) if override else None
     if path is None:
         root = repo_root(cwd)
         if root is None:
-            return {}
+            return {}, None
         path = root / CONFIG
     try:
-        return tomllib.loads(path.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError):
-        return {}
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}, None
+    except OSError as exc:
+        return {}, f"unreadable: {exc.strerror}"
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        return {}, f"invalid TOML: {exc}"
+    return (data, None) if isinstance(data, dict) else ({}, "not a table")
+
+
+def load(cwd: str | None = None) -> dict:
+    return load_checked(cwd)[0]
 
 
 def section(config: dict, name: str) -> dict:

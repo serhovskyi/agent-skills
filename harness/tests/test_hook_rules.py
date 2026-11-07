@@ -7,10 +7,21 @@ Each case names the rule id it witnesses (`rule: <id>`); test_hooks_are_armed.py
 compares those ids to the ones guard_bash.py actually fires, in both directions.
 """
 
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
-from harness_support import HOOKS, MEMORY_BUDGET, MEMORY_HINT, load_hook, run_hook
+from harness_support import (
+    GIT_ENV_OVERRIDES,
+    HOOKS,
+    MEMORY_BUDGET,
+    MEMORY_HINT,
+    SUBPROCESS_HANG_BUDGET_SECONDS,
+    git_init,
+    load_hook,
+    run_hook,
+)
 
 GUARD_BASH = HOOKS / "guard_bash.py"
 SESSION_STATE = HOOKS / "session_state.py"
@@ -410,3 +421,112 @@ def test_a_run_whose_exit_code_is_its_own_is_silent(command):
 
 def test_a_configured_runner_is_silent_without_a_config(repo_without_config, unconfigured):
     assert _pipefail("make check-api 2>&1 | grep passed", cwd=repo_without_config) == {}
+
+
+# The default branch is the repo's, not a guess at `main`: a `trunk` repo was told it was
+# off the default branch while on it, and measured against a `main` it never had.
+
+
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", "-c", "user.name=Session", "-c", "user.email=session@example.invalid", *args],
+        cwd=repo,
+        env={**os.environ, **GIT_ENV_OVERRIDES},
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=SUBPROCESS_HANG_BUDGET_SECONDS,
+    ).stdout
+
+
+def _trunk_clone(tmp_path: Path) -> Path:
+    upstream = tmp_path / "upstream"
+    upstream.mkdir()
+    _git(upstream, "init", "-q", "-b", "trunk")
+    _git(upstream, "commit", "-q", "--allow-empty", "-m", "base")
+    _git(tmp_path, "clone", "-q", str(upstream), "clone")
+    return tmp_path / "clone"
+
+
+def _preamble_of(repo: Path) -> list[str]:
+    out = run_hook(SESSION_STATE, {"cwd": str(repo)})
+    return out["hookSpecificOutput"]["additionalContext"].splitlines()
+
+
+def test_on_the_remotes_default_branch_the_warning_names_it(tmp_path):
+    lines = _preamble_of(_trunk_clone(tmp_path))
+
+    [warning] = [line for line in lines if "WARNING:" in line]
+    assert "default branch (trunk)" in warning
+
+
+def test_off_the_default_branch_divergence_is_measured_against_it(tmp_path):
+    repo = _trunk_clone(tmp_path)
+    _git(repo, "switch", "-q", "-c", "feature")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "work")
+
+    lines = _preamble_of(repo)
+
+    assert "  vs trunk:  1 ahead, 0 behind" in lines
+    assert not [line for line in lines if "WARNING:" in line]
+
+
+def test_without_a_remote_the_default_falls_back_to_a_local_master(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "master")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "base")
+
+    assert load_hook(SESSION_STATE).default_branch(str(repo)) == "master"
+
+
+def test_the_default_branch_warning_can_be_switched_off(tmp_path, monkeypatch):
+    config = tmp_path / "harness.toml"
+    config.write_text("[session_state]\nwarn_on_default_branch = false\n", encoding="utf-8")
+    monkeypatch.setenv("WAVE_HARNESS_CONFIG", str(config))
+    repo = git_init(tmp_path / "repo")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "base")
+
+    lines = _preamble_of(repo)
+
+    assert lines[1] == "  branch:    main"
+    assert not [line for line in lines if "WARNING:" in line]
+
+
+def test_the_default_branch_warning_is_on_without_a_setting():
+    lines = load_hook(SESSION_STATE).preamble("trunk", "abc1234 x", 0, 0, "", default="trunk")
+
+    assert any("WARNING:" in line for line in lines)
+
+
+def _project_dir(config: Path, key: str) -> Path:
+    directory = config / "projects" / key
+    directory.mkdir(parents=True)
+    return directory
+
+
+def test_a_project_key_with_dots_and_underscores_is_found(tmp_path, monkeypatch):
+    config = tmp_path / "config"
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
+    project = _project_dir(config, "-work-my-app-v2")
+
+    index = load_hook(SESSION_STATE).memory_index("/work/my_app.v2")
+
+    assert index == project / "memory" / "MEMORY.md"
+
+
+def test_the_separator_only_key_wins_where_it_exists(tmp_path, monkeypatch):
+    config = tmp_path / "config"
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config))
+    project = _project_dir(config, "-work-my_app.v2")
+    _project_dir(config, "-work-my-app-v2")
+
+    index = load_hook(SESSION_STATE).memory_index("/work/my_app.v2")
+
+    assert index == project / "memory" / "MEMORY.md"
+
+
+def test_a_project_under_neither_key_has_no_index(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "config"))
+
+    assert load_hook(SESSION_STATE).memory_index("/work/my_app.v2") is None

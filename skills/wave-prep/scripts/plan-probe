@@ -16,10 +16,11 @@ exit:
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 # The output carries Δ, → and — ; a legacy-codepage console (Windows cp1251/cp437)
 # raises UnicodeEncodeError on the first one and the digest is lost.
@@ -36,7 +37,16 @@ EXT = r"ts|tsx|vue|js|mjs|cjs|py|json|md|yml|yaml|toml|cfg|sh|sql|html|css"
 CITATION = re.compile(rf"([\w./@{{}},*-]+\.(?:{EXT})):(\d+)(?:-(\d+))?")
 PATH_SHAPE = re.compile(rf"^[@\w][\w.@/{{}},*-]*(?:\.(?:{EXT})|/[\w.@{{}},*-]+)$")
 MUST_EXIST = {"Modify", "Delete", "Edit", "Update", "Read"}
-ALIASES = {"@/": "frontend/src/"}
+JSONC_NOISE = re.compile(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/|,(?=\s*[}\]])', re.S)
+
+
+def load_jsonc(path):
+    """tsconfig is JSON with comments and trailing commas; strings pass through untouched."""
+    text = path.read_text(encoding="utf-8")
+    try:
+        return json.loads(JSONC_NOISE.sub(lambda m: m[0] if m[0].startswith('"') else "", text))
+    except (json.JSONDecodeError, ValueError):
+        return {}
 
 
 def expand_braces(text):
@@ -62,11 +72,49 @@ class Tree:
         for p in listing:
             self.by_name.setdefault(Path(p).name, []).append(p)
         self.packages = set()
-        for pj in (self.root / "frontend/package.json", self.root / "package.json"):
-            if pj.exists():
-                data = json.loads(pj.read_text(encoding="utf-8"))
-                for field in ("dependencies", "devDependencies", "peerDependencies"):
-                    self.packages |= set(data.get(field, {}))
+        self.aliases = {}
+        for p in sorted(listing):
+            if "node_modules" in PurePosixPath(p).parts:
+                continue
+            name = PurePosixPath(p).name
+            if name == "package.json":
+                self._read_package(p)
+            elif name.startswith("tsconfig") and name.endswith(".json"):
+                self._read_aliases(p)
+
+    def _read_package(self, path):
+        try:
+            data = json.loads((self.root / path).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, ValueError):
+            return
+        for field in ("dependencies", "devDependencies", "peerDependencies"):
+            if isinstance(data.get(field), dict):
+                self.packages |= set(data[field])
+
+    def _read_aliases(self, path):
+        """`"@/*": ["./src/*"]` maps `@/` onto that directory, relative to `baseUrl`, which is
+        relative to the tsconfig's own directory."""
+        try:
+            options = load_jsonc(self.root / path).get("compilerOptions") or {}
+        except OSError:
+            return
+        base = PurePosixPath(path).parent / options.get("baseUrl", ".")
+        for key, targets in (options.get("paths") or {}).items():
+            if not key.endswith("*") or not isinstance(targets, list):
+                continue
+            for target in targets:
+                if isinstance(target, str) and target.endswith("*"):
+                    prefix = os.path.normpath(str(base / target[:-1])).replace(os.sep, "/")
+                    prefix = "" if prefix == "." else prefix + "/"
+                    forms = self.aliases.setdefault(key[:-1], [])
+                    if prefix not in forms:
+                        forms.append(prefix)
+
+    def under_alias(self, token):
+        return under_alias(token, self.aliases)
+
+    def is_aliased(self, token):
+        return any(token.startswith(alias) for alias in self.aliases)
 
     def is_package_path(self, token):
         """`flatpickr/dist/flatpickr.min.css` is real and lives in node_modules, not here."""
@@ -75,6 +123,12 @@ class Tree:
 
     def resolve(self, cited):
         """A dead path must be reported as a dead path, not as an ambiguous basename."""
+        if self.is_aliased(cited):
+            forms = self.under_alias(cited)
+            hit = next((form for form in forms if form in self.tracked), None)
+            if hit:
+                return hit, None
+            cited = forms[0]
         if cited in self.tracked:
             return cited, None
         if "/" in cited:
@@ -136,7 +190,7 @@ class Tree:
 LINE_SUFFIX = re.compile(r":\d+(?:[-,]\d+)*$")
 
 
-def normalize_entry(raw):
+def normalize_entry(raw, aliases):
     """A Files: entry may carry a line suffix, an alias, or plain prose.
 
     `…/lateResponseExempt.ts:166` is a citation, not a filename; `@/modules/x` is an
@@ -150,7 +204,7 @@ def normalize_entry(raw):
         return path
     if not PATH_SHAPE.match(path):
         return None
-    return under_alias(path)[0]
+    return under_alias(path, aliases)[0]
 
 
 HAS_EXT = re.compile(rf"\.(?:{EXT})\b")
@@ -170,7 +224,7 @@ def looks_addressed(token):
     )
 
 
-def file_entries(lines):
+def file_entries(lines, aliases):
     """One entry may name several paths; taking only the first hid a dead address.
 
     An entry the parser cannot shape into a path is yielded with `None`, never dropped:
@@ -187,7 +241,7 @@ def file_entries(lines):
         if m:
             ticked = PATH_IN_TICKS.findall(m.group(2))
             for raw in ticked or [m.group(2)]:
-                yield m.group(1), normalize_entry(raw), raw, i
+                yield m.group(1), normalize_entry(raw, aliases), raw, i
 
 
 def candidate_paths(lines):
@@ -216,16 +270,19 @@ def candidate_paths(lines):
     return found
 
 
-def under_alias(token):
-    for alias, prefix in ALIASES.items():
+def under_alias(token, aliases):
+    for alias, prefixes in aliases.items():
         if token.startswith(alias):
             rest = token[len(alias) :]
-            base = prefix + rest
-            return (
-                [base]
-                if Path(base).suffix
-                else [base + e for e in ("", ".ts", ".vue", "/index.ts")]
-            )
+            forms = []
+            for prefix in prefixes:
+                base = prefix + rest
+                forms += (
+                    [base]
+                    if Path(base).suffix
+                    else [base + e for e in ("", ".ts", ".vue", "/index.ts")]
+                )
+            return forms
     return [token]
 
 
@@ -250,7 +307,7 @@ def probe(plan, tree, created):
     lines = Path(plan).read_text(encoding="utf-8").splitlines()
     findings = []
 
-    for verb, pattern, raw, entry_line in file_entries(lines):
+    for verb, pattern, raw, entry_line in file_entries(lines, tree.aliases):
         if pattern is None:
             token = raw.strip()
             if looks_addressed(token):
@@ -276,20 +333,20 @@ def probe(plan, tree, created):
                 )
 
     for token, line_no in sorted(candidate_paths(lines).items(), key=lambda kv: kv[1]):
-        normal = under_alias(token)[0]
+        normal = tree.under_alias(token)[0]
         if tree.is_package_path(token) or any(
             normal.startswith(e) or e.startswith(normal) for e in created
         ):
             continue
-        if any(tree.matches(form) for form in under_alias(token)):
+        if any(tree.matches(form) for form in tree.under_alias(token)):
             continue
         if (
             not any(ch in token for ch in "*?[")
             and Path(token).suffix == ""
-            and not token.startswith("@/")
+            and not tree.is_aliased(token)
         ):
             continue
-        base = under_alias(token)[0]
+        base = tree.under_alias(token)[0]
         parent = str(Path(base).parent)
         elsewhere = sorted(
             tree.by_name.get(Path(base).name, []), key=lambda c: -shared_tail(c, base)
@@ -334,7 +391,10 @@ def main():
     if not args:
         sys.exit(__doc__)
 
-    tree = Tree(".")
+    top = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    tree = Tree(top)
     created = set()
     hard_kinds = {"MISSING", "COLLISION", "DEAD", "MOVED", "CITE"}
     hard = 0

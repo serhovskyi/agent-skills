@@ -8,6 +8,7 @@ import subprocess
 from collections import Counter
 from pathlib import Path
 
+import pytest
 from harness_support import BIN, SUBPROCESS_HANG_BUDGET_SECONDS
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "evidence_run"
@@ -421,3 +422,56 @@ def test_a_configured_runner_is_verbatim_without_a_config(tmp_path):
     recorded = run.evidence.read_bytes().split(b"\n", 1)[1].rsplit(b"EXIT=0\n", 1)[0]
     assert recorded == run.fixture
     assert run.notes == []
+
+
+@pytest.mark.parametrize("args", [[], ["evidence.txt"]])
+def test_evidence_run_without_a_command_is_a_usage_error_not_an_exit_0(tmp_path, args):
+    result = subprocess.run(
+        ["bash", str(EVIDENCE_RUN), *args],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=SUBPROCESS_HANG_BUDGET_SECONDS,
+    )
+
+    assert result.returncode == 2
+    assert "usage:" in result.stderr
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_an_appended_log_is_summarised_by_its_last_run_alone(tmp_path):
+    log = tmp_path / "suite.log"
+    log.write_bytes(
+        (FIXTURES / "suite-pytest-green.txt").read_bytes()
+        + (FIXTURES / "pytest-migration-red.txt").read_bytes()
+        + b"EXIT=1\n"
+    )
+    (tmp_path / "red").mkdir()
+    red = _summary(_logged(tmp_path / "red", "pytest-migration-red.txt", 1))
+
+    result = _summary(log)
+
+    assert result.stdout.splitlines() == red.stdout.splitlines()
+    assert result.returncode == 1
+
+
+def test_a_second_evidence_run_into_the_same_file_is_what_the_summary_reads(tmp_path):
+    for fixture, status in (("suite-pytest-green.txt", 0), ("pytest-migration-red.txt", 1)):
+        Recording(tmp_path, fixture, "pytest", exit_code=status)
+
+    result = _summary(tmp_path / "evidence.txt")
+
+    assert "14 passed" not in result.stdout
+    assert result.stdout.splitlines()[-1] == "suite EXIT=1"
+    assert result.returncode == 1
+
+
+def test_a_run_appended_after_an_exit_and_cut_off_is_not_read_as_the_earlier_green(tmp_path):
+    log = tmp_path / "suite.log"
+    log.write_bytes((FIXTURES / "suite-pytest-green.txt").read_bytes() + b"pytest -q\n.....F\n")
+
+    result = _summary(log)
+
+    assert result.returncode == os.EX_DATAERR
+    assert "suite EXIT=" not in result.stdout
+    assert "does not end in an EXIT= line" in result.stderr

@@ -23,7 +23,7 @@ REGISTRATION = {
     "stop_dirty.py": ("Stop", ""),
 }
 
-WITNESSES = Path(__file__).resolve().parent / "test_hook_rules.py"
+WITNESSES = sorted(Path(__file__).resolve().parent.glob("test_hook_rules*.py"))
 WITNESS = re.compile(r"\brules?: ((?:[a-z0-9]+(?:-[a-z0-9]+)*(?:,\s+)?)+)")
 
 
@@ -57,10 +57,10 @@ def _configured_rule_ids() -> set[str]:
 
 
 def _witnessed_rule_ids() -> set[str]:
-    tree = ast.parse(WITNESSES.read_text(encoding="utf-8"))
     docstrings = (
         ast.get_docstring(node) or ""
-        for node in ast.walk(tree)
+        for path in WITNESSES
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         if isinstance(node, ast.FunctionDef)
     )
     return {
@@ -154,8 +154,8 @@ def test_the_refusals_are_still_refusals():
     decisions = [
         call.args[0].value for call in _decide_calls() if isinstance(call.args[0], ast.Constant)
     ]
-    assert decisions.count("deny") == 15, (
-        f"guard_bash.py now makes {decisions.count('deny')} refusals, not 15. Adding one "
+    assert decisions.count("deny") == 18, (
+        f"guard_bash.py now makes {decisions.count('deny')} refusals, not 18. Adding one "
         "needs the owner's call (D4); losing one is a guard that stopped guarding."
     )
     assert set(decisions) == {"deny", "warn"}, sorted(set(decisions))

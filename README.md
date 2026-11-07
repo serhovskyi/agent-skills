@@ -51,8 +51,10 @@ bash ~/agent-skills/scripts/link-harness.sh     # --unlink to remove
 ```
 
 `link-harness.sh` registers `harness/hooks/hooks.json` in `~/.claude/settings.json` with paths
-into the clone (a backup goes to `settings.json.bak`), and links the three evidence tools into
-`~/.local/bin`. Again, one route or the other: both registers every hook twice. Restart sessions
+into the clone (the first run keeps `settings.json.orig`, every run a timestamped `.bak`), and
+links the three evidence tools into `~/.local/bin`. A registered hook whose file is gone — the
+clone moved or deleted — exits 0 with a message that its guards are off, instead of blocking
+every call. Again, one route or the other: both registers every hook twice. Restart sessions
 afterwards — hooks are read at session start.
 
 **Skills only, no agents** — for Cursor, Windsurf, OpenCode and other Agent-Skills harnesses:
@@ -93,7 +95,7 @@ Three zero-token scripts do the counting, so prose and reality cannot drift:
 ```bash
 WP=~/.claude/skills/wave-prep
 "$WP/scripts/plan-extract" docs/superpowers/plans/<wave>-<link>.md      # task table, files, forecast
-"$WP/scripts/plan-probe"   docs/superpowers/plans/<wave>-{a,b,c}.md -q  # MOVED / DEAD / MISSING / COLLISION
+"$WP/scripts/plan-probe"   docs/superpowers/plans/<wave>-{a,b,c}.md --quiet  # MOVED / DEAD / MISSING / COLLISION
 "$WP/scripts/profile-probe" --quiet                                       # the repo profile vs. the tree
 ```
 
@@ -213,7 +215,7 @@ stash stack. Each rule encodes a loss that already happened.
 
 | hook | event | what it does |
 |---|---|---|
-| `guard_bash.py` | PreToolUse/Bash | **refuses** irreversible git: `push`, `reset --hard`, `clean -f`, `checkout --`, `restore`, any `stash` that moves the shared stack, `branch -D`, history rewrites, blanket `add`, `commit -a`; and `pkill -f`, which matches its own shell. **Warns** on commands that answer truthfully and mean something else: `git grep` blind to untracked files, a pathspec resolved against a stale cwd, `git add <dir>` silently skipping ignored files, a commit of the whole shared index, `pgrep -f`, a headless `--window-size` that does not give that viewport |
+| `guard_bash.py` | PreToolUse/Bash | **refuses** irreversible git: `push`, `reset --hard`, `clean -f`, `checkout --`, `checkout -f`, `switch --discard-changes`, `restore` (unless `--staged` alone), any `stash` that moves the shared stack, `branch -D`, history rewrites, blanket `add`, `commit -a`; and `pkill -f`, which matches its own shell. **Warns** on commands that answer truthfully and mean something else: `git grep` blind to untracked files, a pathspec resolved against a stale cwd, `git add <dir>` silently skipping ignored files, a commit of the whole shared index, `pgrep -f`, a headless `--window-size` that does not give that viewport. It judges every command the typed line will run: each line, each side of `;`/`&&`/`\|`, subshells and `$( )`, loop and `if` bodies, the argument of `time`/`timeout`/`env`/`sudo`/`nohup`/`xargs`, the string of `bash -c`/`sh -c`/`eval`, and the program behind `npx`, `python -m`, `uv run`, `poetry run` |
 | `warn_pipefail.py` | PostToolUse/Bash | a test run piped into `tail` reports the pager's exit code |
 | `session_state.py` | SessionStart | the tree's measured branch, HEAD and dirt, before any handoff note's claims |
 | `stop_dirty.py` | Stop | staged and untracked counts when a turn ends |
@@ -226,9 +228,9 @@ user was entitled to see.
 
 | tool | does |
 |---|---|
-| `evidence-run <file> <cmd…>` | appends the command line, its output (test-runner noise trimmed, full log kept beside it) and an `EXIT=` printed by its own shell to `<file>` |
+| `evidence-run <file> <cmd…>` | appends the command line, its output (test-runner noise trimmed, full log kept beside it) and an `EXIT=` printed by its own shell to `<file>`; without a command it is a usage error |
 | `absence-check --rev R --base B --pattern ERE [--allow path:n]… -- paths` | "the pattern is gone at R": reads revisions, never the working tree, and refuses a base where the pattern never hit |
-| `suite-summary <log>` | a suite log's summary lines and its `EXIT=`, refusing a log that has none |
+| `suite-summary <log>` | the last run's summary lines and its `EXIT=` (an appended log holds several), refusing a run that has none |
 
 ### The repo's harness config — `.claude/harness.toml`
 
@@ -244,17 +246,25 @@ an invented repo is [`harness/harness.example.toml`](harness/harness.example.tom
 | `[guard_bash]` `host_markers` | what makes a command count as containerised | `["docker compose exec", "make "]` |
 | `[[guard_bash.warn_make]]` | make targets worth a warning, with an `id` and a `reason` | a local `make ci` that CI never runs |
 | `[[guard_bash.warn_program]]` | programs worth a warning wherever they run | `npx prettier` in a repo formatted by eslint |
-| `[session_state]` | `memory_budget` in bytes for the project's MEMORY.md, and a `memory_hint` | `memory_budget = 6144` |
+| `[session_state]` | `memory_budget` in bytes for the project's MEMORY.md, and a `memory_hint`; `warn_on_default_branch = false` silences the on-default-branch warning | `memory_budget = 6144` |
 | `[warn_pipefail]` / `[evidence]` | `runners` — your own runner commands beyond pytest/vitest/jest/… | `runners = ["make test-api"]` |
 
 Every rule you add carries its reason in the `reason` string: the warning is the only place the
 next session reads it.
 
-**What the guard cannot see.** `guard_bash` reads the command the agent typed, not the commands
-a script it runs will type. `bash scripts/publish.sh` is one command to it, so the `git push`
-inside is not refused; neither is a `git stash` inside a Makefile target. Put a script whose
-inner commands must stay the owner's behind your own rule (`[[guard_bash.warn_program]]` warns;
-a refusal is a deny rule added to `guard_bash.py`).
+**What the guard cannot see.** `guard_bash` reads the command the agent typed, down to the
+string a `bash -c` carries — but not the commands a script *file* or an interpreter one-liner
+will run. `bash scripts/publish.sh` is one command to it, so the `git push` inside is not
+refused; neither is a `git stash` inside a Makefile target, nor `subprocess.run(["git",
+"push"])` in a `python3 -c`. Put a script whose inner commands must stay the owner's behind
+your own rule (`[[guard_bash.warn_program]]` warns; a refusal is a deny rule added to
+`guard_bash.py`).
+
+**The guard fails closed, the config fails soft.** A `harness.toml` that does not parse, or an
+entry of the wrong type, is reported once per command as a warning and that entry is dropped —
+the generic rules keep running, and a repo cannot switch them off through its config. A hook
+that crashes refuses the command instead, naming the exception: a crashed guard has judged
+nothing, and the harness would otherwise read its exit as "no verdict".
 
 ## Structure
 
@@ -265,6 +275,7 @@ a refusal is a deny rule added to `guard_bash.py`).
 agents/
 ├── gate-evidence-auditor.md        # evidence, not code — the second review lens
 └── solution-architect-reviewer.md  # plan review, before any code exists
+Makefile                            # make test · make lint
 harness/
 ├── .claude-plugin/plugin.json      # the wave-harness plugin
 ├── hooks/                          # hooks.json + the four hooks, repo_config.py reads harness.toml
@@ -395,7 +406,7 @@ stack and repo specifics — an agent that names your framework belongs in your 
 start). Run the suite before publishing — it is what CI runs:
 
 ```bash
-cd ~/agent-skills && uv run --with pytest python -m pytest harness/tests -q
+cd ~/agent-skills && make test                      # ARGS="harness/tests/test_publish.py" narrows it
 ```
 
 Adding a rule to `guard_bash.py`:
@@ -425,7 +436,7 @@ be worse than none:
 
 | what | where | what it does |
 |---|---|---|
-| **publish denylist** | `.git/info/publish-denylist` of your clone (never committed) | the project's names, paths and identifiers, one per line; `publish.sh` refuses and unstages any diff whose added lines contain one |
+| **publish denylist** | `.git/info/publish-denylist` of your clone (never committed, so never cloned) | the project's names, paths and identifiers, one per line; `publish.sh` refuses, leaving the index as it was, when one is in the added lines, file names or binaries of the staged diff or of any unpushed commit, or in a commit message. It refuses without the file: `touch` it if there is nothing to keep out |
 | **one line in the project's `CLAUDE.md`** | the project | "the wave skills and generic hooks live in `<clone>` (linked): edit there, generic words only; this repo's facts go to `.claude/wave-profile.md` / `.claude/harness.toml`" |
 | **a write guard** | the project's own PreToolUse `Write\|Edit` hook | refuses a write to `.claude/skills/<published skill>/`, `.claude/agents/<published agent>.md` or `.claude/hooks/<published hook>.py` in the project (it would shadow the link); refuses an edit into the clone that carries a denylisted word; warns on any other edit into the clone that the text is about to be public |
 

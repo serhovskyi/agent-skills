@@ -33,16 +33,59 @@ WARNINGS: list[tuple[str, str]] = []
 
 
 class RepoRules:
-    """`[guard_bash]` of the repo's harness.toml: what this guard cannot know on its own."""
+    """`[guard_bash]` of the repo's harness.toml: what this guard cannot know on its own.
+
+    A repo controls this file, so a wrong type is recorded in `problems` and the entry is
+    dropped — never raised. An exception here would end the hook with exit 1, which the
+    harness reads as "no verdict", and the generic rules would be off along with the
+    repo's. A repo may add rules this way; it may not switch the others off.
+    """
 
     def __init__(self, config: dict) -> None:
+        self.problems: list[str] = []
         rules = repo_config.section(config, "guard_bash")
-        self.owner = repo_config.section(config, "harness").get("owner") or "the owner"
-        self.host_markers = tuple(rules.get("host_markers", DEFAULT_HOST_MARKERS))
-        self.host_only = dict(rules.get("host_only", {}))
-        self.host_only_npm = dict(rules.get("host_only_npm", {}))
-        self.warn_make = list(rules.get("warn_make", []))
-        self.warn_program = list(rules.get("warn_program", []))
+        owner = repo_config.section(config, "harness").get("owner")
+        self.owner = owner if isinstance(owner, str) and owner else "the owner"
+        self.host_markers = tuple(self._strings(rules, "host_markers", DEFAULT_HOST_MARKERS))
+        self.host_only = self._mapping(rules, "host_only")
+        self.host_only_npm = self._mapping(rules, "host_only_npm")
+        self.warn_make = self._rules(rules, "warn_make", "targets")
+        self.warn_program = self._rules(rules, "warn_program", "programs")
+
+    def _strings(self, rules: dict, key: str, default: tuple) -> list[str]:
+        value = rules.get(key, list(default))
+        if isinstance(value, list) and all(isinstance(v, str) for v in value):
+            return value
+        self.problems.append(f"{key} must be a list of strings")
+        return list(default)
+
+    def _mapping(self, rules: dict, key: str) -> dict[str, str]:
+        value = rules.get(key, {})
+        if isinstance(value, dict) and all(
+            isinstance(k, str) and isinstance(v, str) for k, v in value.items()
+        ):
+            return value
+        self.problems.append(f'{key} must be a table of program = "what to run instead"')
+        return {}
+
+    def _rules(self, rules: dict, key: str, names: str) -> list[dict]:
+        value = rules.get(key, [])
+        if not isinstance(value, list):
+            self.problems.append(f"{key} must be an array of tables")
+            return []
+        kept = []
+        for i, rule in enumerate(value):
+            if (
+                isinstance(rule, dict)
+                and isinstance(rule.get("id"), str)
+                and isinstance(rule.get("reason"), str)
+                and isinstance(rule.get(names), list)
+                and all(isinstance(n, str) for n in rule[names])
+            ):
+                kept.append(rule)
+            else:
+                self.problems.append(f"{key}[{i}] needs string id, string reason, list {names}")
+        return kept
 
 
 RULES = RepoRules({})
@@ -93,13 +136,21 @@ def emit() -> None:
     sys.exit(0)
 
 
-HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1.*?^\2$", re.DOTALL | re.MULTILINE)
-SEPARATORS = ("&&", "||", ";", "|", "&", "\n")
+HEREDOC = re.compile(
+    r"<<-?\s*(['\"]?)(\w+)\1(?P<opener>[^\n]*)\n.*?^\t*\2[ \t]*$", re.DOTALL | re.MULTILINE
+)
+PUNCTUATION = "();<>|&\n"
+SEPARATOR_CHARS = set("();|&\n")
+SEPARATORS = ("&&", "||", ";", "|", "&", "\n", "(", ")")
 
 
 def strip_heredocs(command: str) -> str:
-    """Heredoc bodies are data. Left in, an apostrophe there unbalances the lexer."""
-    return HEREDOC.sub(" ", command)
+    """Heredoc bodies are data. Left in, an apostrophe there unbalances the lexer.
+
+    The rest of the opener line stays: `git commit -F - <<EOF && git reset --hard`
+    once lost its second command with the body.
+    """
+    return HEREDOC.sub(lambda m: f"<<{m.group(2)}{m.group('opener')}", command)
 
 
 def split_tokens(text: str) -> list[str]:
@@ -107,11 +158,17 @@ def split_tokens(text: str) -> list[str]:
 
     A lexer error must never blank the guard: `echo it's fine; git push` once
     parsed to zero segments, which every rule below reads as nothing to check.
+    A newline is punctuation here, not whitespace: as whitespace it glued every
+    later line onto the first command's argv, and `git status\ngit push` was one
+    harmless `git status`. Comments are cut by hand below, because the lexer's own
+    rule starts one at any `#`, URL fragments and issue refs included.
     """
     for posix in (True, False):
         try:
-            lexer = shlex.shlex(text, posix=posix, punctuation_chars=True)
+            lexer = shlex.shlex(text, posix=posix, punctuation_chars=PUNCTUATION)
             lexer.whitespace_split = True
+            lexer.whitespace = " \t\r"
+            lexer.commenters = ""
             return list(lexer)
         except ValueError:
             continue
@@ -121,15 +178,30 @@ def split_tokens(text: str) -> list[str]:
     return [t.strip("\"'") for t in spaced.split() if t.strip("\"'")]
 
 
+def is_separator(token: str) -> bool:
+    return bool(token) and set(token) <= SEPARATOR_CHARS
+
+
 def segments(command: str) -> list[list[str]]:
-    """Split a shell command into argv lists, one per pipeline/list element."""
+    """Split a shell command into argv lists, one per pipeline/list element.
+
+    `(`, `)` and newlines separate too, so `(git push)`, `x=$(git push)` and a second
+    line are commands of their own. A word that starts with `#` opens a comment that
+    runs to the end of its line.
+    """
     out: list[list[str]] = []
     current: list[str] = []
+    in_comment = False
     for token in split_tokens(strip_heredocs(command)):
-        if token in SEPARATORS:
+        if in_comment and not ("\n" in token and is_separator(token)):
+            continue
+        in_comment = False
+        if is_separator(token):
             if current:
                 out.append(current)
             current = []
+        elif token.startswith("#"):
+            in_comment = True
         else:
             current.append(token)
     if current:
@@ -153,14 +225,96 @@ SELF_MATCH = (
 )
 
 
+TRANSPARENT = {
+    "env",
+    "nohup",
+    "time",
+    "nice",
+    "ionice",
+    "stdbuf",
+    "command",
+    "exec",
+    "builtin",
+    "if",
+    "then",
+    "else",
+    "elif",
+    "fi",
+    "while",
+    "until",
+    "do",
+    "done",
+    "!",
+    "{",
+    "}",
+}
+TRANSPARENT_WITH_VALUE = {"timeout", "xargs", "sudo"}
+VALUE_FLAGS = {"-n", "-P", "-I", "-L", "-s", "-k", "--max-args", "-u", "-g", "-a", "-d"}
+SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+RUN_THROUGH = {"uv", "poetry", "pipenv", "pdm", "hatch", "rye"}
+RUN_VALUE_FLAGS = {
+    "--with",
+    "--with-requirements",
+    "--with-editable",
+    "--python",
+    "-p",
+    "--extra",
+    "--group",
+    "--only-group",
+    "--package",
+    "--directory",
+    "--project",
+    "--env-file",
+    "--index",
+    "-C",
+}
+
+
 def head(argv: list[str]) -> list[str]:
-    """Drop leading env assignments and sudo so argv[0] is the real program."""
+    """Drop what runs the command without being it, so argv[0] is the real program.
+
+    `xargs git push`, `timeout 30 git stash`, `if …; then git reset --hard; fi` and
+    `nohup pytest` each slipped every rule here once: the program the rule names stood
+    in argv[1] or argv[2].
+    """
     i = 0
-    while i < len(argv) and (
-        re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", argv[i]) or argv[i] == "sudo"
-    ):
-        i += 1
+    while i < len(argv):
+        token = os.path.basename(argv[i])
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", argv[i]) or token in TRANSPARENT:
+            i += 1
+        elif token in TRANSPARENT_WITH_VALUE:
+            i += 1
+            while i < len(argv) and argv[i].startswith("-"):
+                i += 2 if argv[i] in VALUE_FLAGS else 1
+            if token == "timeout" and i < len(argv):
+                i += 1
+        else:
+            break
     return argv[i:]
+
+
+def unwrapped(argv: list[str]) -> list[list[str]]:
+    """The commands a shell wrapper will run: `bash -c '<str>'`, `eval <words>`.
+
+    The inner string is a command in its own right and is parsed as one. `bash -c
+    "git push"` once reached the remote through this hook, because its argv[0] was bash.
+    """
+    if not argv:
+        return []
+    program = os.path.basename(argv[0])
+    inner = None
+    if program in SHELLS:
+        for i, arg in enumerate(argv[1:], 1):
+            if _has_short_flag([arg], "c") and i + 1 < len(argv):
+                inner = argv[i + 1]
+                break
+            if not arg.startswith("-"):
+                break
+    elif program == "eval":
+        inner = " ".join(argv[1:])
+    if inner is None:
+        return [argv]
+    return [cmd for seg in segments(inner) for cmd in unwrapped(head(seg))]
 
 
 GIT_GLOBAL_OPTIONS_WITH_VALUE = ("-C", "-c", "--git-dir", "--work-tree", "--namespace")
@@ -209,7 +363,28 @@ def check_git(argv: list[str]) -> None:
             "Commit your own paths instead of reverting the worktree: `git commit -- <paths>`.",
         )
 
-    if sub == "restore" and "--staged" not in flags:
+    if sub == "checkout" and ("--force" in flags or _has_short_flag(flags, "f")):
+        decide(
+            "deny",
+            "git-checkout-force",
+            "`git checkout -f` throws away local changes to reach the target. Commit your own "
+            "paths first: `git commit -- <paths>`.",
+        )
+
+    if sub == "switch" and (
+        "--discard-changes" in flags or "--force" in flags or _has_short_flag(flags, "f")
+    ):
+        decide(
+            "deny",
+            "git-switch-discard",
+            "`git switch --discard-changes` throws away local changes. Commit your own paths "
+            "first: `git commit -- <paths>`.",
+        )
+
+    staged_only = ("--staged" in flags or _has_short_flag(flags, "S")) and not (
+        "--worktree" in flags or _has_short_flag(flags, "W")
+    )
+    if sub == "restore" and not staged_only:
         decide(
             "deny",
             "git-restore",
@@ -313,10 +488,18 @@ def check_git(argv: list[str]) -> None:
 
 
 def runner(argv: list[str]) -> str:
-    """argv[0], or what `npx` is about to fetch and run in its place."""
+    """argv[0], or the program a launcher runs in its place: `npx X`, `python -m X`,
+    `uv run X`, `poetry run X`."""
     program = os.path.basename(argv[0])
     if program in ("npx", "pnpx", "bunx") and len(argv) > 1:
-        program = os.path.basename(argv[1])
+        return os.path.basename(argv[1])
+    if re.fullmatch(r"python[0-9.]*", program) and len(argv) > 2 and argv[1] == "-m":
+        return argv[2]
+    if program in RUN_THROUGH and len(argv) > 2 and argv[1] == "run":
+        i = 2
+        while i < len(argv) and argv[i].startswith("-"):
+            i += 2 if argv[i] in RUN_VALUE_FLAGS else 1
+        return os.path.basename(argv[i]) if i < len(argv) else program
     return program
 
 
@@ -329,8 +512,11 @@ def check_make_targets(argv: list[str]) -> None:
             decide("warn", rule["id"], rule["reason"].replace("{target}", argv[1]))
 
 
-def check_host_only(command: str, argv: list[str]) -> None:
-    if any(marker in command for marker in RULES.host_markers):
+def check_host_only(argv: list[str]) -> None:
+    """Judged on this segment alone: a marker in another segment proves nothing about
+    this one, and `make up && pytest …` once ran pytest on the host that way."""
+    segment = " ".join(argv)
+    if any(marker in segment for marker in RULES.host_markers):
         return
 
     program = runner(argv)
@@ -359,7 +545,7 @@ def check_host_only(command: str, argv: list[str]) -> None:
 
 
 def check_blind_gates(command: str, argv: list[str]) -> None:
-    if "vitest" in command and "--environment" in argv:
+    if "vitest" in " ".join(argv) and "--environment" in argv:
         decide(
             "deny",
             "vitest-environment-flag",
@@ -392,33 +578,60 @@ def check_blind_gates(command: str, argv: list[str]) -> None:
         )
 
 
-def main() -> None:
-    try:
-        payload = json.load(sys.stdin)
-    except (json.JSONDecodeError, ValueError):
-        sys.exit(0)
+def check_config(error: str | None) -> None:
+    if error:
+        decide(
+            "warn",
+            "harness-config-unreadable",
+            f".claude/harness.toml did not parse ({error}); this repo's own rules are OFF "
+            "until it does — only the generic git and gate rules ran on this command.",
+        )
+    if RULES.problems:
+        decide(
+            "warn",
+            "harness-config-invalid",
+            ".claude/harness.toml has entries this guard cannot use, and dropped them: "
+            + "; ".join(RULES.problems[:4])
+            + ". Everything else in it ran.",
+        )
 
+
+def judge(payload: dict) -> None:
     command = payload.get("tool_input", {}).get("command", "")
     if not command:
-        sys.exit(0)
+        return
 
     global RULES
-    RULES = RepoRules(repo_config.load(payload.get("cwd")))
+    config, error = repo_config.load_checked(payload.get("cwd"))
+    RULES = RepoRules(config)
+    check_config(error)
 
-    # A heredoc body is data, and the rules that read the whole command cannot tell a
-    # forbidden form from a string that merely spells one.
     code = strip_heredocs(command)
-    parsed = [head(argv) for argv in segments(command)]
-
-    for argv in parsed:
+    for argv in (cmd for seg in segments(command) for cmd in unwrapped(head(seg))):
         if not argv:
             continue
         if os.path.basename(argv[0]) == "git":
             check_git(argv)
         check_make_targets(argv)
-        check_host_only(code, argv)
+        check_host_only(argv)
         check_blind_gates(code, argv)
 
+
+def main() -> None:
+    try:
+        payload = json.load(sys.stdin)
+    except (json.JSONDecodeError, ValueError):
+        sys.exit(0)
+    try:
+        judge(payload)
+    except Exception as exc:
+        decide(
+            "deny",
+            "guard-crashed",
+            f"guard_bash.py failed on this command ({type(exc).__name__}: {exc}). A guard that "
+            "crashed has judged nothing, so Bash is refused until the hook is fixed; "
+            "`scripts/link-harness.sh --unlink` turns it off meanwhile.",
+        )
     emit()
 
 
