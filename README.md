@@ -1,7 +1,19 @@
 # agent-skills
 
 Personal agent skills for AI coding assistants — dev workflow tooling, starting with the
-**wave** pipeline for executing multi-plan features without drowning the controller's context.
+**wave** pipeline for executing multi-plan features without drowning the controller's context,
+and the **harness** of hooks and evidence tools that keeps sessions sharing one working tree
+honest.
+
+Two plugins, one marketplace, installable separately:
+
+| plugin | what it ships |
+|---|---|
+| `wave-skills` | `wave-prep` · `wave-run` · `wave-close`, and the two reviewer agents they dispatch |
+| `wave-harness` | hooks that refuse irreversible git and warn on blind commands, plus `evidence-run`, `absence-check`, `suite-summary` |
+
+They are independent, but they were measured together: the skills' reply contract records every
+gate run through an evidence runner, and `wave-harness` ships one.
 
 Shipped as a Claude Code **plugin**, because the skills dispatch agents and the two have to
 arrive together: a skill that dispatches a reviewer nobody installed fails at the review stage,
@@ -27,6 +39,21 @@ This links skills into `~/.claude/skills` and `~/.agents/skills`, and agents int
 `~/.claude/agents`. Every entry is a symlink into the clone, so the installed files **are** the
 repo — edit in place, publish with `scripts/publish.sh`. Pick one route or the other; running
 both installs the same content twice.
+
+**The harness, as a plugin or linked for editing:**
+
+```
+/plugin install wave-harness
+```
+
+```bash
+bash ~/agent-skills/scripts/link-harness.sh     # --unlink to remove
+```
+
+`link-harness.sh` registers `harness/hooks/hooks.json` in `~/.claude/settings.json` with paths
+into the clone (a backup goes to `settings.json.bak`), and links the three evidence tools into
+`~/.local/bin`. Again, one route or the other: both registers every hook twice. Restart sessions
+afterwards — hooks are read at session start.
 
 **Skills only, no agents** — for Cursor, Windsurf, OpenCode and other Agent-Skills harnesses:
 
@@ -178,6 +205,50 @@ The wave registry lives at `.superpowers/sdd/<wave>/wave.md` **because that path
 Wave state must survive the `git switch` between link branches; a tracked registry travels with
 the branch and lies the moment a link merges.
 
+## Harness
+
+Hooks for Claude Code sessions that share one working tree — several sessions, one index, one
+stash stack. Each rule encodes a loss that already happened.
+
+| hook | event | what it does |
+|---|---|---|
+| `guard_bash.py` | PreToolUse/Bash | **refuses** irreversible git: `push`, `reset --hard`, `clean -f`, `checkout --`, `restore`, any `stash` that moves the shared stack, `branch -D`, history rewrites, blanket `add`, `commit -a`; and `pkill -f`, which matches its own shell. **Warns** on commands that answer truthfully and mean something else: `git grep` blind to untracked files, a pathspec resolved against a stale cwd, `git add <dir>` silently skipping ignored files, a commit of the whole shared index, `pgrep -f`, a headless `--window-size` that does not give that viewport |
+| `warn_pipefail.py` | PostToolUse/Bash | a test run piped into `tail` reports the pager's exit code |
+| `session_state.py` | SessionStart | the tree's measured branch, HEAD and dirt, before any handoff note's claims |
+| `stop_dirty.py` | Stop | staged and untracked counts when a turn ends |
+
+Refusals are only for irreversible loss; everything routine (commit, merge, switch) runs
+unprompted. A warning never states a permission decision, so it can never answer a prompt the
+user was entitled to see.
+
+**Evidence tools** — what the wave skills' reply contract runs gates through:
+
+| tool | does |
+|---|---|
+| `evidence-run <file> <cmd…>` | appends the command line, its output (test-runner noise trimmed, full log kept beside it) and an `EXIT=` printed by its own shell to `<file>` |
+| `absence-check --rev R --base B --pattern ERE [--allow path:n]… -- paths` | "the pattern is gone at R": reads revisions, never the working tree, and refuses a base where the pattern never hit |
+| `suite-summary <log>` | a suite log's summary lines and its `EXIT=`, refusing a log that has none |
+
+### The repo's harness config — `.claude/harness.toml`
+
+The hooks know git and shells; they cannot know your stack. What only your repo knows goes in
+one optional file, and a repo without it keeps the generic rules alone. A filled-in example for
+an invented repo is [`harness/harness.example.toml`](harness/harness.example.toml).
+
+| section | holds | example |
+|---|---|---|
+| `[harness]` | `owner` — who runs what the guard refuses | `owner = "the maintainer"` |
+| `[guard_bash.host_only]` | programs refused outside a container, and what to run instead | `pytest = "make test-api"` |
+| `[guard_bash.host_only_npm]` | npm scripts refused on the host | `test = "make test-web"` |
+| `[guard_bash]` `host_markers` | what makes a command count as containerised | `["docker compose exec", "make "]` |
+| `[[guard_bash.warn_make]]` | make targets worth a warning, with an `id` and a `reason` | a local `make ci` that CI never runs |
+| `[[guard_bash.warn_program]]` | programs worth a warning wherever they run | `npx prettier` in a repo formatted by eslint |
+| `[session_state]` | `memory_budget` in bytes for the project's MEMORY.md, and a `memory_hint` | `memory_budget = 6144` |
+| `[warn_pipefail]` / `[evidence]` | `runners` — your own runner commands beyond pytest/vitest/jest/… | `runners = ["make test-api"]` |
+
+Every rule you add carries its reason in the `reason` string: the warning is the only place the
+next session reads it.
+
 ## Structure
 
 ```
@@ -187,6 +258,16 @@ the branch and lies the moment a link merges.
 agents/
 ├── gate-evidence-auditor.md        # evidence, not code — the second review lens
 └── solution-architect-reviewer.md  # plan review, before any code exists
+harness/
+├── .claude-plugin/plugin.json      # the wave-harness plugin
+├── hooks/                          # hooks.json + the four hooks, repo_config.py reads harness.toml
+├── bin/                            # evidence-run, absence-check, suite-summary
+├── tests/                          # pytest; CI runs it (.github/workflows/test.yml)
+└── harness.example.toml            # .claude/harness.toml for an invented repo
+scripts/
+├── link-skills.sh                  # skills + agents, symlinked for editing
+├── link-harness.sh                 # hooks + tools, registered for editing
+└── publish.sh
 skills/
 ├── wave-prep/
 │   ├── SKILL.md
@@ -246,8 +327,8 @@ cp ~/.claude/skills/wave-prep/SKILL.md ~/agent-skills/skills/wave-prep/SKILL.md
 bash ~/agent-skills/scripts/publish.sh "update wave-prep"
 ```
 
-`publish.sh` stages `skills/`, `agents/`, `.claude-plugin/` and `README.md`, so agent, manifest and docs edits
-travel with skill edits.
+`publish.sh` stages `skills/`, `agents/`, `harness/`, `scripts/`, `.claude-plugin/`, `.github/`
+and `README.md`, so every edit travels with the skill edits.
 
 Plugin users update with `/plugin update wave-skills`; `npx skills@latest add` users re-run the
 install. Users who cloned manually just need `git pull` — the symlinks already point into the

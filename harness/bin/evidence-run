@@ -1,0 +1,17 @@
+#!/bin/bash
+# Usage: evidence-run <file> <command...>
+# The whole output also goes to <file>.raw.log, which *.log keeps out of git.
+file=$1
+shift
+raw=$file.raw.log
+printf '%q ' "$@" | tee -a "$raw" >> "$file"
+echo | tee -a "$raw" >> "$file"
+offset=$(wc -c < "$raw")
+"$@" >> "$raw" 2>&1
+status=$?
+if ! python3 "$(dirname "$(readlink -f "$0")")/evidence_filter.py" "$raw" "$offset" "$@" >> "$file"; then
+  tail -c +"$((offset + 1))" "$raw" >> "$file"
+  echo "[evidence-run] the filter failed; the output above is whole" >> "$file"
+fi
+echo "EXIT=$status" | tee -a "$raw" >> "$file"
+exit "$status"

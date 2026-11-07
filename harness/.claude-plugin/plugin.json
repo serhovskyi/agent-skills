@@ -1,0 +1,11 @@
+{
+  "name": "wave-harness",
+  "version": "0.1.0",
+  "description": "Hooks and evidence tools for agent sessions that share one working tree: refuse irreversible git, warn on commands that answer truthfully and mean something else (a pipe that hides a red suite, a git grep blind to new files, a commit that swallows a neighbour's index), and record every gate run with an EXIT= its own shell printed. Repo-specific rules come from .claude/harness.toml.",
+  "author": {
+    "name": "Yurii Serhovskyi"
+  },
+  "homepage": "https://github.com/serhovskyi/agent-skills",
+  "license": "MIT",
+  "keywords": ["hooks", "guardrails", "git", "evidence", "shared-worktree", "harness"]
+}

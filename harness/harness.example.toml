@@ -1,0 +1,49 @@
+# .claude/harness.toml — the repo's half of wave-harness, for an invented repo:
+# a Django API and a React client, every dev command inside Docker Compose.
+# Copy the shape, not the values. Every section is optional; a missing file is an
+# empty config, and the hooks keep only their generic rules.
+
+[harness]
+# Who runs what the guard refuses ("Ask <owner> to run it").
+owner = "the maintainer"
+
+[guard_bash]
+# A command containing any of these runs inside a container, so host_only does not apply.
+host_markers = ["docker compose exec", "docker exec", "make "]
+
+# Programs refused on the host, each with what to run instead.
+[guard_bash.host_only]
+pytest = "make test-api"
+ruff = "make lint-api"
+vitest = "make test-web"
+eslint = "make lint-web"
+
+# npm scripts refused on the host (`npm test`, `npm run lint`, ...).
+[guard_bash.host_only_npm]
+test = "make test-web"
+lint = "make lint-web"
+
+# Make targets worth a warning. `{target}` in the reason is replaced with the target.
+[[guard_bash.warn_make]]
+id = "make-ci-is-local"
+targets = ["ci"]
+reason = "`make {target}` runs only here; CI runs .github/workflows/ci.yml, which calls the npm scripts directly. Green here is not green there."
+
+# Programs worth a warning wherever they run (also as `npx <program>`).
+[[guard_bash.warn_program]]
+id = "npx-prettier"
+programs = ["prettier"]
+reason = "prettier is not this repo's formatter; npx installs a fresh one and reformats against the repo's style. Use `make lint-fix-web`."
+
+[session_state]
+# Warn when this project's always-loaded MEMORY.md grows past the budget, in bytes.
+memory_budget = 6144
+memory_hint = "Retired lines are listed in memory-retired."
+
+[warn_pipefail]
+# The repo's own runner commands, beyond pytest/vitest/jest/make test/...
+runners = ["./manage.py test", "make check-api"]
+
+[evidence]
+# Commands evidence-run filters as test-runner output (tracebacks trimmed, noise dropped).
+runners = ["test-api", "test-web"]

@@ -1,0 +1,80 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.5 [39m[90m/app[39m
+
+[90mstderr[2m | src/components/OrderCount.test.ts[2m > [22m[2morder count[2m > [22m[2mrenders the count it was given
+[22m[39m[Vue warn]: Invalid prop: type check failed for prop "count". Expected Number with value NaN, got String with value "seven". 
+  at <Anonymous count="seven" ref="VTU_COMPONENT" > 
+  at <VTUROOT>
+
+Error: connect ECONNREFUSED 127.0.0.1:9
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2083:16) {
+  errno: -111,
+  code: 'ECONNREFUSED',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 9
+}
+[90mstderr[2m | src/components/OrderCount.test.ts[2m > [22m[2morder count[2m > [22m[2mrenders the count it was given
+[22m[39mDOMException [NetworkError]: Failed to execute "fetch()" on "Window" with URL "http://127.0.0.1:9/": connect ECONNREFUSED 127.0.0.1:9
+    at Fetch.onError [90m(file:///app/[39mnode_modules/[4mhappy-dom[24m/lib/fetch/Fetch.js:540:21[90m)[39m
+[90m    at ClientRequest.emit (node:events:514:28)[39m
+[90m    at emitErrorEvent (node:_http_client:114:11)[39m
+[90m    at Socket.socketErrorListener (node:_http_client:774:5)[39m
+[90m    at Socket.emit (node:events:514:28)[39m
+[90m    at emitErrorNT (node:internal/streams/destroy:170:8)[39m
+[90m    at emitErrorCloseNT (node:internal/streams/destroy:129:3)[39m
+[90m    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)[39m
+
+ [31m❯[39m [30m[45m dom [49m[39m src/components/OrderCount.test.ts [2m([22m[2m2 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 69[2mms[22m[39m
+   [31m❯[39m order count [2m(2)[22m
+[31m     [31m×[31m renders the count it was given[39m[32m 60[2mms[22m[39m
+     [32m✓[39m adds one and one[32m 1[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Suites 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m [30m[45m dom [49m[39m src/components/OrderCount.test.ts[2m [ src/components/OrderCount.test.ts ][22m
+[31m[1mAssertionError[22m: [Vue warn] budget — src/components/OrderCount.test.ts warned past src/tests/warnBudget.ts: expected { …(1) } to deeply equal {}[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- {}[39m
+[31m+ {[39m
+[31m+   "Invalid prop: type check failed for prop \"count\". Expected Number with value NaN, got String with value \"seven\".": 1,[39m
+[31m+ }[39m
+
+[36m [2m❯[22m src/tests/setup.ts:[2m45:6[22m[39m
+    [90m 43|[39m   for (const warning of vueWarnings) seen[warning] = (seen[warning] ??…
+    [90m 44|[39m   expect(seen, `[Vue warn] budget — list it in src/tests/warnBud…
+    [90m 45|[39m     .toEqual(WARN_BUDGET[file] ?? {})
+    [90m   |[39m      [31m^[39m
+    [90m 46|[39m })
+    [90m 47|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯[22m[39m
+
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m [30m[45m dom [49m[39m src/components/OrderCount.test.ts[2m > [22morder count[2m > [22mrenders the count it was given
+[31m[1mAssertionError[22m: expected 'seven' to be '7' // Object.is equality[39m
+
+Expected: [32m"7"[39m
+Received: [31m"seven"[39m
+
+[36m [2m❯[22m src/components/OrderCount.test.ts:[2m14:28[22m[39m
+    [90m 12|[39m     const wrapper = mount(Counter, { props: { count: 'seven' as unknow…
+    [90m 13|[39m     await fetch('http://127.0.0.1:9/').catch((error: unknown) => conso…
+    [90m 14|[39m     expect(wrapper.text()).toBe('7')
+    [90m   |[39m                            [31m^[39m
+    [90m 15|[39m   })
+    [90m 16|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m1 passed[39m[22m[90m (2)[39m
+[2m   Start at [22m 18:39:11
+[2m   Duration [22m 956ms[2m (environment 62%, setup 18%, tests 9%, transform 8%, worker 2%, import 1%)[22m
+

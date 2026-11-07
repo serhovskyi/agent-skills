@@ -1,0 +1,14 @@
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 001, add customers table
+INFO  [alembic.runtime.migration] Running upgrade 001 -> 002, add products table
+INFO  [alembic.runtime.migration] Running upgrade 002 -> 003, add orders table
+INFO  [alembic.runtime.migration] Running upgrade 003 -> 004, add order_lines table
+INFO  [alembic.runtime.migration] Running upgrade 004 -> 005, add index on orders.created_at
+INFO  [alembic.runtime.migration] Running upgrade 005 -> 006, add status to orders
+INFO  [alembic.runtime.migration] Running upgrade 006 -> 007, add shipping_address to orders
+INFO  [alembic.runtime.migration] Running upgrade 007 -> 008, add discounts table
+INFO  [alembic.runtime.migration] Running upgrade 008 -> 009, add currency to order_lines
+INFO  [alembic.runtime.migration] Running upgrade 009 -> 010, drop legacy_carts table
+INFO  [alembic.runtime.migration] Running upgrade 010 -> 011, split customers.name into first_name and last_name
+INFO  [alembic.runtime.migration] Running upgrade 011 -> 012, add total_cents to orders — computed from order_lines

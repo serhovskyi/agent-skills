@@ -1,0 +1,27 @@
+============================= test session starts ==============================
+platform linux -- Python 3.15.0, pytest-9.1.1, pluggy-1.7.0
+rootdir: /app
+configfile: pytest.ini
+plugins: mock-3.17.0, asyncio-1.4.0, xdist-3.8.0, platformdirs-4.13.5, anyio-4.15.1, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+created: 8/8 workers
+8 workers [2 items]
+
+.E                                                                       [100%]
+==================================== ERRORS ====================================
+____________________ ERROR at setup of test_errors_in_setup ____________________
+[gw4] linux -- Python 3.15.0 /usr/local/bin/python3.15
+
+    @pytest.fixture
+    def broken():
+        logging.getLogger("shop.orders").error("boom")
+>       raise RuntimeError("setup broke")
+E       RuntimeError: setup broke
+
+/tmp/scratch/test_setup_error.py:9: RuntimeError
+------------------------------ Captured log setup ------------------------------
+ERROR    shop.orders:test_setup_error.py:8 boom
+=========================== short test summary info ============================
+ERROR ::test_errors_in_setup - RuntimeError: setup broke
+========================== 1 passed, 1 error in 4.15s ==========================
+EXIT=1

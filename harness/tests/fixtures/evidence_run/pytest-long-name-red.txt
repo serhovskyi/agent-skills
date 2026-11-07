@@ -1,0 +1,19 @@
+============================= test session starts ==============================
+platform linux -- Python 3.15.0, pytest-9.1.1, pluggy-1.7.0
+rootdir: /app
+configfile: pytest.ini
+plugins: mock-3.17.0, asyncio-1.4.0, xdist-3.8.0, platformdirs-4.13.5, anyio-4.15.1, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 9 items
+
+tests/test_evidence_run.py .F.......                                      [100%]
+
+=================================== FAILURES ===================================
+__ test_a_pytest_red_keeps_assertions_failed_lines_summary_and_the_test_frame __
+tests/test_evidence_run.py:111: in test_a_pytest_red_keeps_assertions_failed_lines_summary_and_the_test_frame
+    assert not lost, f"{len(lost)} lines lost"
+E   AssertionError: 8 lines lost
+E   assert not ["E                   alembic.script.revision.ResolutionError: No such revision or branch '013'; please ensure at leas...sion identified by '013'", "E           alembic.util.exc.CommandError: Can't locate revision identified by '013'", ...]
+=========================== short test summary info ============================
+FAILED tests/test_evidence_run.py::test_a_pytest_red_keeps_assertions_failed_lines_summary_and_the_test_frame
+========================= 1 failed, 8 passed in 0.64s ==========================

@@ -18,7 +18,7 @@ if git diff --quiet && git diff --cached --quiet; then
   exit 0
 fi
 
-git add skills/ agents/ .claude-plugin/ README.md .gitignore
+git add skills/ agents/ harness/ scripts/ .claude-plugin/ .github/ README.md .gitignore
 git commit -m "$MSG"
 git push
 echo "Published."

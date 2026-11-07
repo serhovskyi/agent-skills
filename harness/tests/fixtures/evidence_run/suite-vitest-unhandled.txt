@@ -1,0 +1,36 @@
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.5 [39m[90m/tmp/scratch[39m
+
+ [32m✓[39m unhandled.test.mjs [2m([22m[2m1 test[22m[2m)[22m[32m 7[2mms[22m[39m
+[31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Unhandled Errors [49m[22m[31m⎯⎯⎯⎯⎯⎯[39m
+[31m[1m
+Vitest caught 1 unhandled error during the test run.
+This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.[22m[39m
+
+[31m⎯⎯⎯⎯[39m[1m[41m Unhandled Rejection [49m[22m[31m⎯⎯⎯⎯⎯[39m
+[31m[1mError[22m: evidence fixture: unhandled[39m
+[36m [2m❯[22m unhandled.test.mjs:[2m2:18[22m[39m
+    [90m  1|[39m it("leaves a rejection nobody awaits", () => {
+    [90m  2|[39m   Promise.reject(new Error("evidence fixture: unhandled"))
+    [90m   |[39m                  [31m^[39m
+    [90m  3|[39m })
+    [90m  4|[39m
+[90m [2m❯[22m ../../app/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:[2m1632:35[22m[39m
+[90m [2m❯[22m ../../app/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:[2m2801:26[22m[39m
+[90m [2m❯[22m ../../app/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:[2m3338:20[22m[39m
+[90m [2m❯[22m runWithCancel ../../app/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:[2m3333:10[22m[39m
+[90m [2m❯[22m ../../app/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:[2m3318:20[22m[39m
+[90m [2m❯[22m runWithTimeout ../../app/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:[2m3276:10[22m[39m
+[90m [2m❯[22m ../../app/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:[2m3904:64[22m[39m
+
+[31mThis error originated in "[1munhandled.test.mjs[22m" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.[39m
+[31m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[39m
+
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m     Errors [22m [1m[31m1 error[39m[22m
+[2m   Start at [22m 21:46:18
+[2m   Duration [22m 305ms[2m (transform 38%, import 27%, worker 22%, tests 11%, environment 1%)[22m
+
+EXIT=1

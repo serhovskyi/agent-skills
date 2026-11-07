@@ -1,0 +1,28 @@
+============================= test session starts ==============================
+platform linux -- Python 3.15.0, pytest-9.1.1, pluggy-1.7.0
+rootdir: /app
+configfile: pytest.ini
+plugins: mock-3.17.0, asyncio-1.4.0, xdist-3.8.0, platformdirs-4.13.5, anyio-4.15.1, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 2 items
+
+tests/test_orders_scratch.py F.                                           [100%]
+
+=================================== FAILURES ===================================
+______________________ test_the_double_of_three_is_seven _______________________
+
+    def test_the_double_of_three_is_seven():
+        value = _doubled(3)
+>       assert value == 7
+E       assert 6 == 7
+
+tests/test_orders_scratch.py:10: AssertionError
+=============================== warnings summary ===============================
+tests/test_orders_scratch.py::test_a_deprecated_call_still_answers
+  /app/tests/test_orders_scratch.py:14: DeprecationWarning: the old spelling is going away
+    warnings.warn("the old spelling is going away", DeprecationWarning, stacklevel=1)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_orders_scratch.py::test_the_double_of_three_is_seven
+==================== 1 failed, 1 passed, 1 warning in 0.15s ====================

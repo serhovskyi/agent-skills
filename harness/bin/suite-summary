@@ -1,0 +1,4 @@
+#!/bin/bash
+# Usage: suite-summary <log>
+# <log> is a WAVE § Baseline log: the runner's output, then the shell's EXIT=<n> as its last line.
+exec python3 "$(dirname "$(readlink -f "$0")")/suite_summary.py" "$@"

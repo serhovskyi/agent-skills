@@ -1,0 +1,105 @@
+#!/bin/bash
+# Usage: absence-check --rev <rev> --base <base-rev> --pattern <ERE> [--allow <path>:<line>]... -- <path>...
+# Exit 0 no hit at <rev>, 1 hits remain at <rev>, 2 the check is invalid, 3 no hit at <base>.
+fail() {
+  echo "absence-check: $*" >&2
+  exit 2
+}
+
+rev= base= pattern=
+allows=()
+while [ $# -gt 0 ]; do
+  case $1 in
+    --rev | --base)
+      [ $# -ge 2 ] && [[ $2 != -* ]] || fail "$1 needs a revision"
+      if [ "$1" = --rev ]; then
+        [ -z "$rev" ] || fail "--rev given twice"
+        rev=$2
+      else
+        [ -z "$base" ] || fail "--base given twice"
+        base=$2
+      fi
+      shift 2
+      ;;
+    --pattern)
+      [ $# -ge 2 ] && [ -n "$2" ] || fail "--pattern needs an ERE"
+      [ -z "$pattern" ] || fail "--pattern given twice"
+      pattern=$2
+      shift 2
+      ;;
+    --allow)
+      [ $# -ge 2 ] && [[ $2 =~ ^.+:[1-9][0-9]*$ ]] || fail "--allow needs <path>:<line>, got '${2-}'"
+      allows+=("$2")
+      shift 2
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *) fail "unexpected argument '$1'" ;;
+  esac
+done
+[ -n "$rev" ] || fail "--rev is required"
+[ -n "$base" ] || fail "--base is required"
+[ -n "$pattern" ] || fail "--pattern is required"
+[ $# -gt 0 ] || fail "no path after --"
+paths=("$@")
+
+top=$(git rev-parse --show-toplevel 2>/dev/null) || fail "not inside a git repository: $PWD"
+cd "$top" || fail "cannot enter $top"
+
+rev_sha=$(git rev-parse --verify --quiet "$rev^{commit}") || fail "unknown revision '$rev'"
+base_sha=$(git rev-parse --verify --quiet "$base^{commit}") || fail "unknown revision '$base'"
+echo "rev $rev_sha"
+echo "base $base_sha"
+
+for path in "${paths[@]}"; do
+  git cat-file -e "$rev_sha:$path" 2>/dev/null || fail "'$path' does not exist at $rev_sha"
+  echo "path $path $(git rev-parse "$rev_sha:$path")"
+done
+
+grep_at() {
+  git -c core.quotePath=false grep --no-color --no-column -nE -e "$pattern" "$1" -- "${paths[@]}" 2>/dev/null
+}
+
+base_hits=$(grep_at "$base_sha")
+case $? in
+  0) echo "base-hits $(printf '%s\n' "$base_hits" | wc -l)" ;;
+  1)
+    echo "base-hits 0"
+    echo "absence-check: no hit for '$pattern' at base $base_sha" >&2
+    exit 3
+    ;;
+  *) fail "git grep refused --pattern '$pattern' at $base_sha" ;;
+esac
+
+rev_hits=$(grep_at "$rev_sha")
+status=$?
+[ "$status" -le 1 ] || fail "git grep refused --pattern '$pattern' at $rev_sha"
+hits=()
+if [ "$status" -eq 0 ]; then
+  while IFS= read -r hit; do
+    hits+=("${hit#"$rev_sha:"}")
+  done <<<"$rev_hits"
+fi
+
+for allow in "${allows[@]}"; do
+  matched=
+  for hit in "${hits[@]}"; do
+    [[ $hit == "$allow:"* ]] && matched=1 && break
+  done
+  [ -n "$matched" ] || fail "--allow '$allow' matches no hit at $rev_sha"
+done
+
+remaining=()
+for hit in "${hits[@]}"; do
+  allowed=
+  for allow in "${allows[@]}"; do
+    [[ $hit == "$allow:"* ]] && allowed=1 && break
+  done
+  [ -n "$allowed" ] || remaining+=("$hit")
+done
+
+[ ${#remaining[@]} -eq 0 ] && exit 0
+printf '%s\n' "${remaining[@]}"
+exit 1
