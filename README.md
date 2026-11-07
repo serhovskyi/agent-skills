@@ -31,6 +31,7 @@ which is the stage you least want to lose.
   - [Evidence tools](#evidence-tools)
   - [The repo's harness config](#harness-config)
   - [What the guard cannot see](#guard-limits)
+  - [Tests](#tests)
 - [Repository layout](#repository-layout)
 - [Development](#development)
   - [Editing and publishing](#editing-and-publishing)
@@ -241,31 +242,89 @@ the branch and lies the moment a link merges.
 
 ## The harness
 
-Hooks for Claude Code sessions that share one working tree — several sessions, one index, one
-stash stack. Each rule encodes a loss that already happened.
+`wave-harness` is the second plugin: four hooks and three command-line tools for Claude Code
+sessions that share one working tree — several sessions, one index, one stash stack, one
+`cwd` that persists between calls. It knows git and shells; what only your repo knows comes
+from an optional `.claude/harness.toml`. Each rule encodes a loss that already happened in a
+real codebase, not a style preference, and every rule carries a stable id with a test that
+goes red without it. It needs **Python 3.11+** (it reads the config with `tomllib`) and
+nothing else.
+
+The wave skills do not require it, but they were measured with it: the reply contract they
+hand every implementer records each gate run through `evidence-run`, and without the plugin
+the skills fall back to a bare `<cmd> >> <file> 2>&1; echo "EXIT=$?" >> <file>`.
 
 ### Hooks
 
 | hook | event | what it does |
 |---|---|---|
-| `guard_bash.py` | PreToolUse/Bash | **refuses** irreversible git: `push`, `reset --hard`, `clean -f`, `checkout --`, `checkout -f`, `switch --discard-changes`, `restore` (unless `--staged` alone), any `stash` that moves the shared stack, `branch -D`, history rewrites, blanket `add`, `commit -a`; `publish.sh` run by any path or shell, because the push inside it is the owner's; and `pkill -f`, which matches its own shell. **Warns** on commands that answer truthfully and mean something else: `git grep` blind to untracked files, a pathspec resolved against a stale cwd, `git add <dir>` silently skipping ignored files, a commit of the whole shared index, `pgrep -f`, a headless `--window-size` that does not give that viewport. It judges every command the typed line will run: each line, each side of `;`/`&&`/`\|`, subshells and `$( )`, loop and `if` bodies, the argument of `time`/`timeout`/`env`/`sudo`/`nohup`/`xargs`, the string of `bash -c`/`sh -c`/`eval`, and the program behind `npx`, `python -m`, `uv run`, `poetry run` |
-| `warn_pipefail.py` | PostToolUse/Bash | a test run piped into `tail` reports the pager's exit code |
-| `session_state.py` | SessionStart | the tree's measured branch, HEAD and dirt, before any handoff note's claims |
-| `stop_dirty.py` | Stop | staged and untracked counts when a turn ends |
+| `guard_bash.py` | PreToolUse/Bash | judges the command before it runs: **refuses** irreversible loss, **warns** on commands that answer truthfully and mean something else — the two tables below |
+| `warn_pipefail.py` | PostToolUse/Bash | a test runner piped into `tail`, `head`, `grep`, `wc`, … reports the pager's exit code: `pytest … \| tail -5` exits 0 on a red suite, and that has been read as a pass. The note arrives on the command that caused it, not in review. Knows pytest, vitest, jest, playwright, `npm test`, `make test`, `make ci`, `go test`, `cargo test`, mypy, ruff; `[warn_pipefail] runners` adds yours |
+| `session_state.py` | SessionStart | prints the tree as **measured now** — branch, HEAD, tracked and untracked counts, ahead/behind the default branch — before any handoff note's claims. Warns on a detached HEAD or a HEAD on the default branch, notes how many untracked paths `git grep` cannot see, and warns when the project's always-loaded `MEMORY.md` is over its byte budget |
+| `stop_dirty.py` | Stop | staged and untracked counts when a turn ends, so nothing is left behind unnamed |
 
-Refusals are only for irreversible loss; everything routine (commit, merge, switch) runs
-unprompted. A warning never states a permission decision, so it can never answer a prompt the
-user was entitled to see.
+**Two verdicts, and the line between them is the owner's.** A *refusal* is only for
+irreversible loss: commit, merge, rebase and branch switching are routine and run
+unprompted, because a prompt on each one was ruled out as friction. A *warning* is for a
+command that answers truthfully and means something else — a count blind to untracked
+files, a viewport narrower than it claims, a gate that runs nowhere. Blindness is not loss,
+so it never blocks; it arrives beside the command that caused it, the only moment it is
+useful.
+
+**How a verdict reaches the session.** A refusal is a `permissionDecision: deny` with the
+first rule's reason. A warning is the reasons, one paragraph per rule id, as
+`additionalContext` beside the command — it states **no** permission decision at all, so it
+can never answer a prompt the user was entitled to see; a test holds that line. The guard
+judges every command the typed line will run: each line, each side of `;`/`&&`/`|`,
+subshells and `$( )`, loop and `if` bodies, the argument of
+`time`/`timeout`/`env`/`sudo`/`nohup`/`xargs`, the string of `bash -c`/`sh -c`/`eval`, and
+the program behind `npx`, `python -m`, `uv run`, `poetry run`. Heredoc bodies are stripped
+first, so a `git push` quoted inside a file you write is not a push.
+
+**What `guard_bash` refuses** — the push, the throw-away, the shared stack, the blanket:
+
+| rule id | command | why |
+|---|---|---|
+| `git-push` | `git push` | the push is the owner's; `publish.sh` carries the one that belongs to this repo |
+| `git-reset-hard` · `git-clean-force` · `git-checkout-force` · `git-switch-discard` | `reset --hard`, `clean -f`, `checkout -f`, `switch --discard-changes` | throw away local changes, possibly a neighbouring session's, to reach the target |
+| `git-checkout-worktree` · `git-restore` | `checkout -- <path>`, `restore` (unless `--staged` alone) | overwrite the worktree copy; `checkout --` has already erased an uncommitted fix once. Commit your own paths instead: `git commit -- <paths>` |
+| `git-stash-shared-stack` · `git-stash-destructive` | any `stash` that moves the stack; `stash drop/clear` | the stash stack belongs to the repository, shared by every parallel session: a neighbour's push renumbers yours and a pop applies theirs. `stash list/show` are fine |
+| `git-branch-force-delete` | `branch -D` | unmerged work gone with it |
+| `git-history-rewrite` | `filter-branch`, `filter-repo` | rewrites history others have built on. `rebase`, `merge` and `commit --amend` are routine and run unprompted |
+| `git-add-blanket` · `git-commit-all` | `add -A`/`.`/`-u`, `commit -a` | swallow a neighbouring session's staged files — that has already happened |
+| `publish-is-the-owners` | `publish.sh` run by any path or shell | the push inside it is the owner's |
+| `pkill-f-self-match` | `pkill -f <pattern>` | the pattern matches the shell running it |
+| `vitest-environment-flag` | `vitest --environment …` | does not override vitest `projects`: the run silently keeps the project's own environment. Use `--project` |
+| `host-only-runner` · `host-only-npm-script` | programs and npm scripts your `harness.toml` names | a runner that must run inside the container; the refusal names what to run instead |
+| `guard-crashed` | anything, when the hook itself raised | a crashed guard has judged nothing; the refusal names the exception and the `--unlink` that turns it off meanwhile |
+
+**What it warns on** — answers that are true and mean something else:
+
+| rule id | command | the blind spot |
+|---|---|---|
+| `git-grep-untracked-blind` | `git grep` without `--untracked` | searches the index and tracked files only; a file written this session does not exist for it, so the count comes back unchanged with exit 0 |
+| `git-log-pathspec-cwd` | `git log`/`diff`/… with a relative pathspec | a pathspec resolves against the cwd, which this harness keeps between calls: one `cd frontend/` ten calls ago makes an empty result read as "never committed". Prefix `:/` |
+| `git-add-directory` | `git add <dir>` | skips `.gitignore`d files silently with exit 0; nine mutation logs went in this way and one landed, because `.gitignore` holds `*.log` |
+| `git-commit-whole-index` | `git commit -m …` without `-- <paths>` | commits the whole shared index, including a neighbour's staged rename |
+| `pgrep-f-self-match` | `pgrep -f` | matches its own shell |
+| `headless-window-size` | a headless browser with a narrow `--window-size` | the window has a minimum width, the page renders wider and the screenshot is cropped: a false positive and a false negative at once. Measure inside the page |
+| your `warn_make` / `warn_program` ids | make targets and programs your `harness.toml` names | the `reason` string you wrote |
+| `harness-config-unreadable` · `harness-config-invalid` | any command, once | the repo's `harness.toml` did not parse, or an entry was dropped — the generic rules still ran |
 
 ### Evidence tools
 
-What the wave skills' reply contract runs gates through:
+What the wave skills' reply contract runs gates through. `link-harness.sh` links them into
+`~/.local/bin`; the plugin ships them under its own `bin/`.
 
-| tool | does |
-|---|---|
-| `evidence-run <file> <cmd…>` | appends the command line, its output (test-runner noise trimmed, full log kept beside it) and an `EXIT=` printed by its own shell to `<file>`; without a command it is a usage error |
-| `absence-check --rev R --base B --pattern ERE [--allow path:n]… -- paths` | "the pattern is gone at R": reads revisions, never the working tree, and refuses a base where the pattern never hit |
-| `suite-summary <log>` | the last run's summary lines and its `EXIT=` (an appended log holds several), refusing a run that has none |
+| tool | does | exit |
+|---|---|---|
+| `evidence-run <file> <cmd…>` | appends to `<file>` the command line, its output and an `EXIT=<n>` printed by its own shell. The whole output goes to `<file>.raw.log` beside it; what lands in `<file>` is filtered — test-runner noise and long tracebacks trimmed, `git`/`diff`/`grep`/`cat`/`ls` output kept verbatim. If the filter itself fails, the raw output goes in whole with a line saying so. Without a command it is a usage error | the command's own |
+| `absence-check --rev R --base B --pattern ERE [--allow path:n]… -- paths` | proves "the pattern is gone at R": greps the revisions, never the working tree, and refuses a base where the pattern never hit — a check that was always green proves nothing | `0` gone at R · `1` hits remain · `2` invalid check · `3` no hit at base |
+| `suite-summary <log>` | the last run's summary lines and its `EXIT=` from an evidence log (an appended log holds several runs); refuses a log with no run in it | `0` found · non-zero otherwise |
+
+The `EXIT=` line is the point: a runner's output can be green and its exit red, or the
+reverse, and only the shell that ran it knows. `[evidence] runners` in `harness.toml` tells
+the filter which of your own commands to treat as test runners.
 
 <a id="harness-config"></a>
 
@@ -273,18 +332,20 @@ What the wave skills' reply contract runs gates through:
 
 The hooks know git and shells; they cannot know your stack. What only your repo knows goes in
 one optional file, and a repo without it keeps the generic rules alone. A filled-in example for
-an invented repo is [`harness/harness.example.toml`](harness/harness.example.toml).
+an invented Django + React repo where every dev command runs inside Docker Compose is
+[`harness/harness.example.toml`](harness/harness.example.toml).
 
 | section | holds | example |
 |---|---|---|
-| `[harness]` | `owner` — who runs what the guard refuses | `owner = "the maintainer"` |
-| `[guard_bash.host_only]` | programs refused outside a container, and what to run instead | `pytest = "make test-api"` |
+| `[harness]` | `owner` — who runs what the guard refuses ("ask `<owner>` to run it") | `owner = "the maintainer"` |
+| `[guard_bash]` `host_markers` | what makes a command count as containerised, so `host_only` does not apply | `["docker compose exec", "make "]` |
+| `[guard_bash.host_only]` | programs refused on the host, each with what to run instead | `pytest = "make test-api"` |
 | `[guard_bash.host_only_npm]` | npm scripts refused on the host | `test = "make test-web"` |
-| `[guard_bash]` `host_markers` | what makes a command count as containerised | `["docker compose exec", "make "]` |
-| `[[guard_bash.warn_make]]` | make targets worth a warning, with an `id` and a `reason` | a local `make ci` that CI never runs |
-| `[[guard_bash.warn_program]]` | programs worth a warning wherever they run | `npx prettier` in a repo formatted by eslint |
-| `[session_state]` | `memory_budget` in bytes for the project's MEMORY.md, and a `memory_hint`; `warn_on_default_branch = false` silences the on-default-branch warning | `memory_budget = 6144` |
-| `[warn_pipefail]` / `[evidence]` | `runners` — your own runner commands beyond pytest/vitest/jest/… | `runners = ["make test-api"]` |
+| `[[guard_bash.warn_make]]` | make targets worth a warning, with an `id` and a `reason` (`{target}` is substituted) | a local `make ci` that CI never runs |
+| `[[guard_bash.warn_program]]` | programs worth a warning wherever they run, also as `npx <program>` | `npx prettier` in a repo formatted by eslint |
+| `[session_state]` | `memory_budget` in bytes for the project's always-loaded `MEMORY.md`, a `memory_hint` appended to that warning; `warn_on_default_branch = false` for a repo that commits on its default branch by design | `memory_budget = 6144` |
+| `[warn_pipefail]` | `runners` — your own runner commands beyond pytest/vitest/jest/… | `runners = ["./manage.py test"]` |
+| `[evidence]` | `runners` — the commands `evidence-run` filters as test-runner output | `runners = ["test-api", "test-web"]` |
 
 Every rule you add carries its reason in the `reason` string: the warning is the only place the
 next session reads it.
@@ -306,6 +367,24 @@ is one command to it, so it refuses that file by name rather than the `git push`
 it does not see at all. Put a script of your own whose inner commands must stay the owner's
 behind your own rule (`[[guard_bash.warn_program]]` warns; a refusal is a deny rule added to
 `guard_bash.py`).
+
+It also judges one session's commands only. A neighbouring session without the harness can
+still move the stash stack or push; the session-start and stop hooks exist so that at least
+the damage is measured, not inherited from a note.
+
+### Tests
+
+`make test` runs the harness suite under `harness/tests/`, the same thing CI runs
+(`.github/workflows/test.yml`); `make lint` runs ruff over the hooks, the tools and the
+`wave-prep` scripts. Three files carry the structure:
+
+- `test_hook_rules.py` — one witness per rule: a payload, the hook, the verdict, with
+  `rule: <id>` in the docstring. `test_hook_rules_forms.py` runs the same rules through the
+  command *forms* — pipes, subshells, `bash -c`, `xargs`, loops — that the guard unwraps.
+- `test_hooks_are_armed.py` — compares the rule ids the hooks can fire with the ids the
+  witnesses name, in both directions, and pins the number of refusals.
+- `test_evidence_run.py`, `test_absence_check.py`, `test_publish.py` — the tools and the
+  publish script against a throwaway clone.
 
 ## Repository layout
 
