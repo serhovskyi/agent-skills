@@ -131,6 +131,34 @@ def test_an_ordinary_switch_is_allowed():
     assert verdict(bash("git switch main")) == ""
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        'bash scripts/publish.sh "wave-run: tighten the ledger"',
+        "./scripts/publish.sh msg",
+        "~/agent-skills/scripts/publish.sh msg",
+        "sh -x scripts/publish.sh msg",
+        "source scripts/publish.sh",
+        'cd ~/agent-skills && bash scripts/publish.sh "msg"',
+    ],
+)
+def test_the_publish_script_is_refused_however_it_is_launched(command):
+    """rule: publish-is-the-owners. The guard cannot read the `git push` inside a script
+    file, so the file itself is refused by name."""
+    out = bash(command)
+    assert verdict(out) == "deny", command
+    assert "publishing is" in out["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["cat scripts/publish.sh", "git diff -- scripts/publish.sh", "bash scripts/publish-dry.sh"],
+)
+def test_reading_or_naming_the_publish_script_is_allowed(command):
+    """rule: publish-is-the-owners."""
+    assert verdict(bash(command)) == "", command
+
+
 def _config(tmp_path, text: str):
     path = tmp_path / "harness.toml"
     path.write_text(text, encoding="utf-8")

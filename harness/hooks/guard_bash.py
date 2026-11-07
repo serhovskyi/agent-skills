@@ -578,6 +578,32 @@ def check_blind_gates(command: str, argv: list[str]) -> None:
         )
 
 
+SCRIPT_RUNNERS = SHELLS | {"source", "."}
+
+
+def script_run(argv: list[str]) -> str:
+    """The file a segment executes: argv[0], or the file handed to a shell."""
+    program = os.path.basename(argv[0])
+    if program not in SCRIPT_RUNNERS:
+        return program
+    for arg in argv[1:]:
+        if not arg.startswith("-"):
+            return os.path.basename(arg)
+    return program
+
+
+def check_publish(argv: list[str]) -> None:
+    """`git push` is refused above; a script that ends in one is the same push one
+    file away, and this guard cannot read inside files."""
+    if script_run(argv) == "publish.sh":
+        decide(
+            "deny",
+            "publish-is-the-owners",
+            f"`publish.sh` ends in `git push`, and publishing is {RULES.owner}'s call. Leave "
+            "the clone committed and say it is ready to publish.",
+        )
+
+
 def check_config(error: str | None) -> None:
     if error:
         decide(
@@ -614,6 +640,7 @@ def judge(payload: dict) -> None:
             check_git(argv)
         check_make_targets(argv)
         check_host_only(argv)
+        check_publish(argv)
         check_blind_gates(code, argv)
 
 

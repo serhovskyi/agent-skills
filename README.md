@@ -215,7 +215,7 @@ stash stack. Each rule encodes a loss that already happened.
 
 | hook | event | what it does |
 |---|---|---|
-| `guard_bash.py` | PreToolUse/Bash | **refuses** irreversible git: `push`, `reset --hard`, `clean -f`, `checkout --`, `checkout -f`, `switch --discard-changes`, `restore` (unless `--staged` alone), any `stash` that moves the shared stack, `branch -D`, history rewrites, blanket `add`, `commit -a`; and `pkill -f`, which matches its own shell. **Warns** on commands that answer truthfully and mean something else: `git grep` blind to untracked files, a pathspec resolved against a stale cwd, `git add <dir>` silently skipping ignored files, a commit of the whole shared index, `pgrep -f`, a headless `--window-size` that does not give that viewport. It judges every command the typed line will run: each line, each side of `;`/`&&`/`\|`, subshells and `$( )`, loop and `if` bodies, the argument of `time`/`timeout`/`env`/`sudo`/`nohup`/`xargs`, the string of `bash -c`/`sh -c`/`eval`, and the program behind `npx`, `python -m`, `uv run`, `poetry run` |
+| `guard_bash.py` | PreToolUse/Bash | **refuses** irreversible git: `push`, `reset --hard`, `clean -f`, `checkout --`, `checkout -f`, `switch --discard-changes`, `restore` (unless `--staged` alone), any `stash` that moves the shared stack, `branch -D`, history rewrites, blanket `add`, `commit -a`; `publish.sh` run by any path or shell, because the push inside it is the owner's; and `pkill -f`, which matches its own shell. **Warns** on commands that answer truthfully and mean something else: `git grep` blind to untracked files, a pathspec resolved against a stale cwd, `git add <dir>` silently skipping ignored files, a commit of the whole shared index, `pgrep -f`, a headless `--window-size` that does not give that viewport. It judges every command the typed line will run: each line, each side of `;`/`&&`/`\|`, subshells and `$( )`, loop and `if` bodies, the argument of `time`/`timeout`/`env`/`sudo`/`nohup`/`xargs`, the string of `bash -c`/`sh -c`/`eval`, and the program behind `npx`, `python -m`, `uv run`, `poetry run` |
 | `warn_pipefail.py` | PostToolUse/Bash | a test run piped into `tail` reports the pager's exit code |
 | `session_state.py` | SessionStart | the tree's measured branch, HEAD and dirt, before any handoff note's claims |
 | `stop_dirty.py` | Stop | staged and untracked counts when a turn ends |
@@ -254,11 +254,11 @@ next session reads it.
 
 **What the guard cannot see.** `guard_bash` reads the command the agent typed, down to the
 string a `bash -c` carries — but not the commands a script *file* or an interpreter one-liner
-will run. `bash scripts/publish.sh` is one command to it, so the `git push` inside is not
-refused; neither is a `git stash` inside a Makefile target, nor `subprocess.run(["git",
-"push"])` in a `python3 -c`. Put a script whose inner commands must stay the owner's behind
-your own rule (`[[guard_bash.warn_program]]` warns; a refusal is a deny rule added to
-`guard_bash.py`).
+will run. `bash scripts/publish.sh` is one command to it, so it refuses that file by name
+rather than the `git push` inside; a `git stash` inside a Makefile target, or
+`subprocess.run(["git", "push"])` in a `python3 -c`, it does not see at all. Put a script of
+your own whose inner commands must stay the owner's behind your own rule
+(`[[guard_bash.warn_program]]` warns; a refusal is a deny rule added to `guard_bash.py`).
 
 **The guard fails closed, the config fails soft.** A `harness.toml` that does not parse, or an
 entry of the wrong type, is reported once per command as a warning and that entry is dropped —

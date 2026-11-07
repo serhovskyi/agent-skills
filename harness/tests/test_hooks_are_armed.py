@@ -154,8 +154,8 @@ def test_the_refusals_are_still_refusals():
     decisions = [
         call.args[0].value for call in _decide_calls() if isinstance(call.args[0], ast.Constant)
     ]
-    assert decisions.count("deny") == 18, (
-        f"guard_bash.py now makes {decisions.count('deny')} refusals, not 18. Adding one "
+    assert decisions.count("deny") == 19, (
+        f"guard_bash.py now makes {decisions.count('deny')} refusals, not 19. Adding one "
         "needs the owner's call (D4); losing one is a guard that stopped guarding."
     )
     assert set(decisions) == {"deny", "warn"}, sorted(set(decisions))
