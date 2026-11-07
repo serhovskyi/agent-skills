@@ -327,6 +327,12 @@ cp ~/.claude/skills/wave-prep/SKILL.md ~/agent-skills/skills/wave-prep/SKILL.md
 bash ~/agent-skills/scripts/publish.sh "update wave-prep"
 ```
 
+**A publish denylist keeps private projects out.** If you develop these skills inside a private
+codebase, list its names, paths and identifiers one per line in `.git/info/publish-denylist` of
+your clone — `.git/info` is never committed, so the list itself stays private. `publish.sh`
+refuses, and unstages, any diff whose added lines contain one of them. A repo can also refuse
+the edit itself: its write hook reads the same file (the consuming repo's `guard_write` does).
+
 `publish.sh` stages `skills/`, `agents/`, `harness/`, `scripts/`, `.claude-plugin/`, `.github/`
 and `README.md`, so every edit travels with the skill edits.
 
