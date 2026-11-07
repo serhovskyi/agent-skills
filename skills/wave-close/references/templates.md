@@ -11,9 +11,9 @@ Read out of the ledger. Deltas, not absolutes.
 ```
 LINK: <id>     BRANCH: <branch>     BASE: <sha>
 
-SUITE:  <suite> <before> → <after>   (Δ <±n>, forecast <±n>, failed: <n>)
+SUITE:  <suite> <before> → <after>   (Δ <±n>: tasks <±n> vs <±n>, close <±n> vs allowance <n>, failed: <n>)
         <other suite> <untouched | before → after>   (prove it from the diff, not from memory)
-LINT:   <lint command> — <ok | red, cause>
+LINT:   <lint command, profile § Close report> — <ok | red, cause>
         <boundary/dependency rule, if the repo has one> — <count, must be 0>
 TYPES:  <type-check command> — <ok | red, cause>
 CI:     <ci command> — <ok | red, cause>
@@ -30,7 +30,7 @@ DECISIONS TAKEN IN FLIGHT.
 DEFERRED (minor / parked), and which need the owner.
 ```
 
-A divergence over 20% from the forecast is the **first** line of this report.
+A divergence over 20% from either forecast column is the **first** line of this report.
 
 ---
 
@@ -45,7 +45,7 @@ A divergence over 20% from the forecast is the **first** line of this report.
 |---|---|
 | `<sha>` | <one line, what changed and why it is finished> |
 
-Suite at close: <n> tests / <n> files / <n> failed. Δ <±n> against a forecast of <±n>.
+Suite at close: <n> tests / <n> files / <n> failed. Δ <±n> against a forecast of <±n> + <n> (tasks + close).
 
 ## Start condition for <next>
 
@@ -93,7 +93,7 @@ The wave is closed. `main` is at `<sha>`; suite <n>/<n>/<n>.
 
 ## Per-link outcome
 
-| link | forecast Δ | measured Δ | fix rounds | merged |
+| link | forecast Δ (tasks + close) | measured Δ (tasks + close) | fix rounds | merged |
 |---|---|---|---|---|
 
 ## Deferred items, from the registry

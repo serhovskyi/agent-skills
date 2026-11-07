@@ -9,6 +9,7 @@ usage:
   plan-extract --files-tsv PLAN...  one row per file entry, for cross-plan collisions
 """
 
+import itertools
 import re
 import sys
 from pathlib import Path
@@ -56,7 +57,12 @@ def scan(lines):
         m = TASK_HEADING.match(line)
         if m:
             tasks.append(
-                {"level": len(m.group(1)), "num": int(m.group(2)), "title": m.group(3).strip(), "start": i}
+                {
+                    "level": len(m.group(1)),
+                    "num": int(m.group(2)),
+                    "title": m.group(3).strip(),
+                    "start": i,
+                }
             )
     raw = sum(1 for line in lines if TASK_HEADING.match(line))
     if raw > len(tasks):
@@ -65,7 +71,7 @@ def scan(lines):
             f"{raw - len(tasks)} sit inside a fenced block. Either a fence is unbalanced, or the "
             f"plan quotes a task heading as an example; either way the counts below would be wrong."
         )
-    for a, b in zip(tasks, tasks[1:]):
+    for a, b in itertools.pairwise(tasks):
         a["end"] = b["start"]
     if tasks:
         tasks[-1]["end"] = len(lines)
@@ -123,8 +129,9 @@ def trim(block):
     while block and not block[-1].strip():
         block.pop()
     if len(block) > CAP:
-        block = block[:CAP] + [
-            f"  … {len(block) - CAP} more lines — the judgment subagent reads this section, you do not"
+        block = [
+            *block[:CAP],
+            f"  … {len(block) - CAP} more lines — the judgment subagent reads this section, you do not",
         ]
     return block
 
@@ -164,7 +171,10 @@ def digest(path):
         "                        that deletes tests will not match its forecast, and should not)",
     ]
 
-    for label, aliases in (("FORECAST", FORECAST_ALIASES), ("GLOBAL CONSTRAINTS", CONSTRAINT_ALIASES)):
+    for label, aliases in (
+        ("FORECAST", FORECAST_ALIASES),
+        ("GLOBAL CONSTRAINTS", CONSTRAINT_ALIASES),
+    ):
         block = trim(section(lines, aliases))
         out += ["", f"{label} (verbatim)"]
         out += [f"  {ln}" for ln in block] if block else ["  (section not found)"]

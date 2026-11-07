@@ -21,6 +21,15 @@ A deferred decision becomes a decision made by default.
 - A link finished but was never closed: no summary, no relay, unclear merge state.
 - The whole wave's last link is done (the loop terminates instead of relaying).
 
+## When closing moves to a fresh session
+
+The session that ran the link writes `docs/superpowers/plans/<wave>-CLOSE-<id>-PROMPT.md`
+and stops. That prompt names **this skill**, the link, the ledger and registry paths, the
+review and evidence files, and the owner decisions already taken — and nothing about the
+shape of the steps below. A close prompt that restates a step drifts from it: one asked
+for a separate `-SUMMARY.md` where step 6 says otherwise. Where the prompt and this skill
+disagree on how a step is done, the skill wins.
+
 ## The order
 
 1. Summary
@@ -39,7 +48,9 @@ proceed on an assumed answer.
 Read it out of the ledger, in the shape `references/templates.md` gives. Rules:
 
 - **Δ, never absolutes.** "Suite green" is not a report.
-- **A divergence over 20% from the forecast is the first line**, not a footnote.
+- **A divergence over 20% from either forecast column is the first line**, not a footnote:
+  tasks Δ against the tasks forecast, close Δ against the close allowance (link prompt,
+  Forecast).
 - Gates that went red get a line each: which, why, and **ours or not ours**.
 - Divergences between what the plan said and what the tree showed get a line each. They
   are the raw material of the relay.
@@ -79,7 +90,7 @@ On yes, the controller merges **locally** and never pushes:
 git status --porcelain                    # empty, or stop
 git switch main
 git merge --no-ff <branch>
-<suite command> 2>&1 | tail -5           # on main, after the merge
+# on main, after the merge: the WAVE's Baseline method, every suite the link touched
 git rev-parse --short HEAD
 ```
 
@@ -127,7 +138,23 @@ Everything written here is English.
 
 **On the last link there is no relay.** Write the wave summary instead — forecast against
 measured Δ per link, gates that went red and why, decisions taken — plus, if anything was
-deferred, one post-wave prompt assembled from the registry.
+deferred, one post-wave prompt assembled from the registry. The summary is a closing
+`## Outcome` section of `<wave>-WAVE.md`, not a new file.
+
+Then retire the wave's session documents, in one commit on `main` after the last merge:
+
+| delete | keep |
+|---|---|
+| `<wave>-LINK-*-PROMPT.md` · `<wave>-HANDOFF-*.md` · `<wave>-CLOSE-*-PROMPT.md` · raw `evidence/` files no document names | `<wave>-WAVE.md` · specs · plans · `*-REPORT.md` · `evidence/*.md` and every evidence file a document, test or comment names · mockups · the post-wave prompt |
+
+They existed to start one session each; once the wave is closed nothing reads them, and a
+grep over `plans/` keeps finding their stale predicates. A raw evidence file — a suite log,
+a probe dump, a snapshot — earns its keep only by being cited: a gate's red run that a
+REPORT names is the proof the auditor reads, an unnamed one is output nobody will open.
+Measure by basename (`git grep -F`) before deleting; age is never the criterion. Before deleting, read every relay's
+**debts handed on** and **what this link learned**: whatever is still open and absent from
+the link reports moves into the summary or the post-wave prompt. A debt that lives only in a
+deleted relay is a debt nobody will find — `git log` keeps the text, not the reason to look.
 
 ## 7. Propagate the link to a knowledge vault — optional
 
@@ -158,6 +185,21 @@ A relay is not a diff summary. It carries what the next link cannot re-derive:
 
 Operational claims rot like numbers. A relay that says "the suite is 1796" is stale within
 hours; one that says "record the suite before starting" stays true.
+
+The one number a relay may hand on is the close count **with its tree keys**: the start
+predicate names the close file, the hashes it recorded and the `git rev-parse` that checks
+them, so the next link adopts the count only while the tree it was measured on still holds
+(`wave-run`, Preflight). A close file without the keys hands on nothing — the next link runs
+its baseline.
+
+The close is re-recorded every time its tree key moves, and each re-record holds the same line
+as the first: **every `EXIT=` in the close file is printed by the shell that ran the command**
+— the evidence runner (profile § Evidence tooling), or `; echo "EXIT=$?"` on the runner
+itself, never after a pipe.
+None is typed, and a command with no `EXIT=` under it is run again before the file is
+handed on. A diff the close claims empty is recorded with `--exit-code`: `git diff --stat`
+exits 0 on a difference. One close shipped a hand-typed lint `EXIT=0` beside a suite log with
+no exit at all, and took a third round to re-record.
 
 ## Common mistakes
 

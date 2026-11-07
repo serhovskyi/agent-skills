@@ -163,8 +163,10 @@ def looks_addressed(token):
     only something carrying a separator or a file extension was meant to point at a file,
     and only that is worth telling the reader nobody checked it.
     """
-    return bool(token) and not any(ch.isspace() for ch in token) and (
-        "/" in token or HAS_EXT.search(token)
+    return (
+        bool(token)
+        and not any(ch.isspace() for ch in token)
+        and ("/" in token or HAS_EXT.search(token))
     )
 
 
@@ -219,7 +221,11 @@ def under_alias(token):
         if token.startswith(alias):
             rest = token[len(alias) :]
             base = prefix + rest
-            return [base] if Path(base).suffix else [base + e for e in ("", ".ts", ".vue", "/index.ts")]
+            return (
+                [base]
+                if Path(base).suffix
+                else [base + e for e in ("", ".ts", ".vue", "/index.ts")]
+            )
     return [token]
 
 
@@ -249,7 +255,10 @@ def probe(plan, tree, created):
             token = raw.strip()
             if looks_addressed(token):
                 findings.append(
-                    ("UNPARSED", f"{plan}:{entry_line} → {verb}: `{token[:80]}` — not a shape this net checks")
+                    (
+                        "UNPARSED",
+                        f"{plan}:{entry_line} → {verb}: `{token[:80]}` — not a shape this net checks",
+                    )
                 )
             continue
         expanded = expand_braces(pattern)
@@ -274,18 +283,30 @@ def probe(plan, tree, created):
             continue
         if any(tree.matches(form) for form in under_alias(token)):
             continue
-        if not any(ch in token for ch in "*?[") and Path(token).suffix == "" and not token.startswith("@/"):
+        if (
+            not any(ch in token for ch in "*?[")
+            and Path(token).suffix == ""
+            and not token.startswith("@/")
+        ):
             continue
         base = under_alias(token)[0]
         parent = str(Path(base).parent)
-        elsewhere = sorted(tree.by_name.get(Path(base).name, []), key=lambda c: -shared_tail(c, base))
+        elsewhere = sorted(
+            tree.by_name.get(Path(base).name, []), key=lambda c: -shared_tail(c, base)
+        )
         if elsewhere:
             where = elsewhere[0] + (f" (+{len(elsewhere) - 1} more)" if len(elsewhere) > 1 else "")
-            findings.append(("MOVED", f"{plan}:{line_no} → `{token}` — gone; that name now lives at {where}"))
+            findings.append(
+                ("MOVED", f"{plan}:{line_no} → `{token}` — gone; that name now lives at {where}")
+            )
         elif not tree.has_dir(parent):
-            findings.append(("DEAD", f"{plan}:{line_no} → `{token}` — absent, and `{parent}/` is gone too"))
+            findings.append(
+                ("DEAD", f"{plan}:{line_no} → `{token}` — absent, and `{parent}/` is gone too")
+            )
         else:
-            findings.append(("NEW?", f"{plan}:{line_no} → `{token}` — absent, but `{parent}/` is live"))
+            findings.append(
+                ("NEW?", f"{plan}:{line_no} → `{token}` — absent, but `{parent}/` is live")
+            )
 
     cited = citations(lines)
     ok = 0
@@ -298,7 +319,9 @@ def probe(plan, tree, created):
             continue
         text = tree.line_at(resolved, line_no)
         if text is None:
-            findings.append(("CITE", f"{plan}:{plan_line} → `{path}:{line_no}` — file is shorter than that"))
+            findings.append(
+                ("CITE", f"{plan}:{plan_line} → `{path}:{line_no}` — file is shorter than that")
+            )
         else:
             ok += 1
             findings.append(("READ", f"{resolved}:{line_no}  {text.strip()[:96]}"))

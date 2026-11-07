@@ -86,6 +86,7 @@ The wave skills are an extension of, and a simplification of working with,
 | `superpowers` plugin — `subagent-driven-development` | `wave-run` calls its `task-brief` and `review-package` scripts for the per-task machinery |
 | `python3` | the two `wave-prep` scripts |
 | **per-layer reviewer agents** (see below) | two of the four review seats ship here; the stack-specific ones are yours |
+| **`.claude/wave-profile.md`** in your repo (see [below](#repo-profile)) | your commands, roster and stack traps; `wave-prep` writes it on first use |
 
 <a id="reviewer-roster"></a>
 
@@ -131,17 +132,42 @@ Four properties make these work, and are worth copying from the two shipped agen
 
 Vertical tasks get **both** code reviewers on the same diff file: two lenses, one package.
 
-### Repo-specific values
+<a id="repo-profile"></a>
 
-The skills name no toolchain. Each wave states its own, once, in `WAVE.md`:
+### The repo profile — what your project adds
 
-- **suite command** (`make test`, `npm test`, `pytest -q`, …) — plus the rule that all three
-  numbers get recorded: total, file count, failure count. A failing file does not change the
-  total, so one number stays green over red gates.
-- **generated mirrors** — tracked files a tool rewrites (an OpenAPI client, a lockfile, a schema
-  dump). `wave-run` checks they are clean at preflight, because `lint`/`test`/`type-check` can
-  silently regenerate one and turn an unrelated command into an unexplained diff.
-- **plans directory** — `docs/superpowers/plans/` by default, the superpowers convention.
+The skills name no toolchain. Everything they would otherwise have to guess about your repo
+lives in **one tracked file, `.claude/wave-profile.md`**, and the skills cite it section by
+section (`profile § Suites`, `profile § Reply contract`, …). `wave-prep` asks for the values
+and writes it the first time; after that every wave reads it, and only a lesson about your
+stack goes back into it. The template, with every section name the skills look up, is
+[`skills/wave-prep/references/profile.md`](skills/wave-prep/references/profile.md).
+A filled-in one for an invented Django + React repo is
+[`profile-example.md`](skills/wave-prep/references/profile-example.md) — copy its shape, not its
+values.
+
+| section | what it holds | example of the shape |
+|---|---|---|
+| **Suites** | one row per suite: the exact command, the summary lines to record, the paths whose tree hash moves it | `npm test` · `Tests`, `Test Files`, `failed` · `HEAD:web` |
+| **Generated mirrors** | tracked files a tool rewrites; `wave-run` checks they are clean at preflight | `api/openapi.json`, `package-lock.json`, or `none` |
+| **Reviewers** | the plan, code and evidence rosters — which agent reviews which layer | `src/server/` → your backend code reviewer |
+| **Evidence tooling** | the command that records a run with its own `EXIT=`, and an absence check whose exit is the verdict | `scripts/evidence-run <file> <cmd…>`, or `none` for the built-in fallback |
+| **Reply contract** | lines added verbatim to every implementer dispatch: your linters and type-check, how your test runner selects one spec | `Before every commit run <evidence runner> <file> eslint --max-warnings 0 <files>` |
+| **Run notes** | traps of your stack that make a run read green while running nothing | "a `-t` filter is a regex: escape `()`" |
+| **Gate roster** | the commands that list every lint/guard/ratchet file, handed whole to the judgment subagents | `ls tests/lint/` · `cat .importlinter` |
+| **Prep checks** | checks `wave-prep` runs against every plan beyond the generic ones | "route names resolve to a leaf in the router" |
+| **Adaptations** | repo rules every WAVE carries | "no worktree: work on a branch in place", "the tree is shared" |
+| **Rules for every link** | rules appended to the WAVE's numbered list | a gate that never counts as moved, and why |
+| **Close report** | the lint, boundary, type-check and CI commands the link report names | `npm run lint` · `tsc --noEmit` · `make ci` |
+
+Three properties keep a profile useful:
+
+1. **Commands, not descriptions.** A line an implementer copies must run as written.
+2. **Every rule carries its reason.** One paragraph under the block: which failure it exists
+   because of, measured. A rule without one gets dropped by the first person who finds it odd.
+3. **`none` is a value.** An empty section reads as "not filled in"; `none` reads as "checked".
+
+The plans directory is `docs/superpowers/plans/` by default, the superpowers convention.
 
 The wave registry lives at `.superpowers/sdd/<wave>/wave.md` **because that path is gitignored**.
 Wave state must survive the `git switch` between link branches; a tracked registry travels with
@@ -160,6 +186,8 @@ skills/
 ├── wave-prep/
 │   ├── SKILL.md
 │   ├── references/templates.md     # WAVE.md, LINK-PROMPT, registry
+│   ├── references/profile.md       # .claude/wave-profile.md — your repo's half
+│   ├── references/profile-example.md  # the same, filled in for an invented repo
 │   └── scripts/
 │       ├── plan-extract            # countable structure of a plan
 │       └── plan-probe              # plan vs. the live tree
@@ -196,6 +224,12 @@ bash ~/agent-skills/scripts/publish.sh "wave-run: name the mirror check per repo
 
 That's it — no copying, no separate commit step.
 
+**A project-level copy wins over the link.** Claude Code prefers `<repo>/.claude/skills/<name>`
+and `<repo>/.claude/agents/<name>.md` over the user-level ones, so a repo that still carries its
+own copy of a wave skill or a shipped agent silently runs that copy, and your edits land in the
+wrong file. Delete the repo's copies when you switch to the link; what was repo-specific in them
+belongs in its `.claude/wave-profile.md`.
+
 ---
 
 **Without the symlink setup** (e.g. you installed via `npx skills@latest add`), copy and push
@@ -206,7 +240,7 @@ cp ~/.claude/skills/wave-prep/SKILL.md ~/agent-skills/skills/wave-prep/SKILL.md
 bash ~/agent-skills/scripts/publish.sh "update wave-prep"
 ```
 
-`publish.sh` stages `skills/`, `agents/` and `.claude-plugin/`, so agent and manifest edits
+`publish.sh` stages `skills/`, `agents/`, `.claude-plugin/` and `README.md`, so agent, manifest and docs edits
 travel with skill edits.
 
 Plugin users update with `/plugin update wave-skills`; `npx skills@latest add` users re-run the

@@ -49,6 +49,19 @@ WP="$(dirname "$0")"   # or the skill's base directory as given to you
 path in this skill assumes it. A repo that keeps plans elsewhere substitutes its own
 directory throughout — nothing else changes.
 
+## The repo profile
+
+The three wave skills name no toolchain. What they would otherwise guess — suite commands
+and their tree keys, generated mirrors, the reviewer roster, the evidence runner, the gate
+roster, the lines the reply contract adds, the traps of the stack — lives in one tracked
+file, `.claude/wave-profile.md`, and the skills cite it as **profile § X**. Its template is
+`references/profile.md`; the section names there are the ones the skills cite, and
+`references/profile-example.md` shows one filled in.
+
+No profile yet: ask the owner for each value once, with your guess from the tree as the
+recommendation, and write the profile before the wave documents. A profile is the repo's,
+not the wave's — waves read it, and only a lesson about the repo's stack goes back into it.
+
 ## Step 1 — discover and order
 
 `<wave>` is the plans' shared stem, `<link>` each plan's suffix. Both are derived from
@@ -106,10 +119,31 @@ plan path and the extract, and require **at most 60 lines** back in this shape:
 TASKS: <n>
 MODEL PER TASK: T1 <tier> — <one line why>   (one row per task)
 GATES: <gate file or name> — <how it can stay silent>   (one row per gate the plan touches)
+EXTERNAL FIXTURES: <task> — <format> — real artifact in hand: yes | no
 PREDICATES: <predicate>   (start conditions, as predicates, not descriptions)
 COLLISIONS: <task or plan> ↔ <task or plan> — <shared file or interface>
 STALE SUSPICIONS: <what looks older than the tree>
 ```
+
+**GATES is checked against the roster, not against memory.** Give each subagent the gate
+roster as it is on disk — the listing commands of profile § Gate roster, run now, their
+output handed over whole (every file, not only the ones whose names look like tests).
+
+The subagent writes the roster to `.superpowers/sdd/<wave>/gates-<link>.md`, outside its
+60 lines: one row per file it judges to be a gate (a guard, a contract, a ratchet, a
+boundary or an `*_is_armed` file) — `moved` or `not moved`, with the declared plan file
+that moves it or the reason it cannot. A listed file it leaves out is named with a reason. Its GATES section then lists only the `moved` rows, in the WAVE table's
+own shape (`gate | form | how it stays silent`), and every one of them goes into the WAVE's
+"Gates this wave moves" table. A gate missing from that table is a gate no implementer runs
+and no reviewer reads: a wire-agreement gate was left out of one wave's table and stayed red
+for two commits.
+
+**EXTERNAL FIXTURES:** a task that writes a fixture of an external format (a provider
+dump, an export file, a third-party payload) runs after the real artifact is in hand. A hand-written fixture encodes what its author expected the
+format to be: one wave's fixtures were green while the real FDC dump aborted the ETL twice
+— 33 amountless rows for unknown nutrients, 10 negative carbs-by-difference. **Every `no` is
+an owner question** — obtain the artifact, or accept the fixture knowingly — asked before the
+link starts and written into that link prompt's "Open owner decisions" with the answer.
 
 Model tiers, from a wave that measured them:
 
@@ -131,6 +165,7 @@ See `references/templates.md` for all four.
 
 | document | holds |
 |---|---|
+| `.claude/wave-profile.md` | only when missing — the repo's values, see "The repo profile" |
 | `docs/superpowers/plans/<wave>-WAVE.md` | order and why, gates lens, model policy, baseline method, the don't-do list |
 | `docs/superpowers/plans/<wave>-LINK-<id>-PROMPT.md` | start predicates, per-task models, forecast Δ, relay pointer |
 | `.superpowers/sdd/<wave>/wave.md` | the registry: link status, measured numbers, deferred minors, issues, decisions |
@@ -151,6 +186,27 @@ Dispatch plan reviewers when a plan carries no recorded review, or when the prob
 the plan touches. These are **plan** reviewers (do the plans hold up?), distinct from the
 **code** reviewers `wave-run` dispatches per task. Record both rosters in `WAVE.md`
 § Reviewers so no link has to re-derive them.
+
+Whatever the gate, check every route name a frontend plan tells a task to navigate to
+against the router's own definition: a name that resolves to a layout parent, not a leaf,
+renders a blank page that no mocked-router test can see.
+
+And check every command a plan quotes as evidence, because each of these read green in one
+wave while running nothing:
+
+- **A grep run inside a container uses only flags its grep has.** A BusyBox grep rejects
+  `--include`, and one plan's forecast "0 / EXIT=1" was exactly what the crash printed.
+  Rewrite it for the host, or as `find … | xargs grep`.
+- **An absence check never takes its verdict from the end of a pipe.** `grep … | wc -l`
+  prints 0 for "nothing found" and for "grep failed" alike. The check is a tool whose exit is
+  the verdict and which runs its own base control (profile § Evidence tooling).
+- **A gate's named witness reaches its subject.** Open the test and find the call that runs the
+  subject: the revision it migrates to, the route it drives, the symbol it imports. One wave named
+  the test of migration 071 as the downgrade witness of 074; it never runs 074. A witness that
+  cannot reach its subject is replaced, or the row says the gate has none.
+- **Profile § Prep checks**, each one, against every plan.
+- **A close task's diff range starts at the link base, not the wave base.** A range from the
+  wave base reads every earlier link's commits as this link's.
 
 Findings become **one** question to the owner: fix in place · re-pipeline separately ·
 accept knowingly. A plan whose addresses moved is normally a re-pipeline, not an edit in

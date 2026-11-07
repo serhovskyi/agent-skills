@@ -23,8 +23,8 @@ The plan text is given to you in the prompt. Your job is to find what will break
 - **Data & migration risk**: schema changes that break existing rows, non-reversible migrations, backfill gaps, retroactivity violations (this project is "retroactive by design").
 - **Integration breakage**: the plan changes a contract (API schema, function signature, shared model) that other code depends on. Grep for callers.
 - **Concurrency / ordering / idempotency**: save-loops, Celery tasks, sync jobs that can run twice or interleave.
-- **Security**: only if the plan introduces a real vulnerability (auth bypass, leaking the encrypted Grocy keys, injection). Not theoretical hardening.
-- **Architectural smell**: the plan works but entrenches a structural problem (wrong layer owns logic, a model becomes a god-object, read-path now depends on Grocy when it shouldn't, etc.). Report these as "architectural risk", clearly separated from blockers.
+- **Security**: only if the plan introduces a real vulnerability (auth bypass, leaking stored credentials or secrets, injection). Not theoretical hardening.
+- **Architectural smell**: the plan works but entrenches a structural problem (wrong layer owns logic, a model becomes a god-object, a read path now depends on an external service when it shouldn't, etc.). Report these as "architectural risk", clearly separated from blockers.
 
 ## Escalation: new roadmap scope
 
