@@ -46,6 +46,7 @@ class Clone:
         for directory in PUBLISHED:
             self.write(f"{directory}/.keep", "")
         self.write("README.md", "readme\n")
+        self.write("LICENSE", "license\n")
         self.write(".gitignore", "*.log\n")
         (self.path / "scripts" / "publish.sh").write_bytes(PUBLISH.read_bytes())
         self.git("add", "-A")

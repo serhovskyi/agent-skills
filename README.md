@@ -1,6 +1,6 @@
-# agent-skills
+# Agent Skills
 
-Personal agent skills for AI coding assistants — dev workflow tooling, starting with the
+**Personal agent skills for AI coding assistants.** Dev workflow tooling, starting with the
 **wave** pipeline for executing multi-plan features without drowning the controller's context,
 and the **harness** of hooks and evidence tools that keeps sessions sharing one working tree
 honest.
@@ -15,61 +15,84 @@ Two plugins, one marketplace, installable separately:
 They are independent, but they were measured together: the skills' reply contract records every
 gate run through an evidence runner, and `wave-harness` ships one.
 
-Shipped as a Claude Code **plugin**, because the skills dispatch agents and the two have to
+Shipped as Claude Code **plugins**, because the skills dispatch agents and the two have to
 arrive together: a skill that dispatches a reviewer nobody installed fails at the review stage,
 which is the stage you least want to lose.
 
+## Contents
+
+- [Installation](#installation)
+- [The wave pipeline](#the-wave-pipeline)
+  - [Requirements](#requirements)
+  - [Reviewer roster](#reviewer-roster)
+  - [The repo profile](#repo-profile)
+- [The harness](#the-harness)
+  - [Hooks](#hooks)
+  - [Evidence tools](#evidence-tools)
+  - [The repo's harness config](#harness-config)
+  - [What the guard cannot see](#guard-limits)
+- [Repository layout](#repository-layout)
+- [Development](#development)
+  - [Editing and publishing](#editing-and-publishing)
+  - [Adding a skill](#adding-a-skill)
+  - [Adding an agent](#adding-an-agent)
+  - [Changing the harness](#changing-the-harness)
+  - [Developing inside a private project](#private-project)
+
 ## Installation
 
-**As a plugin — skills and agents together (recommended):**
+Pick **one route per component**. Running two routes installs the same content twice — the
+plugin and the symlinks, or the plugin and the hook registration.
+
+### As plugins (recommended)
+
+Skills and agents together, and the harness beside them:
 
 ```
 /plugin marketplace add serhovskyi/agent-skills
 /plugin install wave-skills
+/plugin install wave-harness
 ```
 
-**As symlinks — if you want to edit the skills as you use them:**
+Update later with `/plugin update wave-skills` (and `wave-harness`).
+
+### As symlinks, to edit the skills as you use them
 
 ```bash
 git clone git@github.com:serhovskyi/agent-skills.git ~/agent-skills
 bash ~/agent-skills/scripts/link-skills.sh
-```
-
-This links skills into `~/.claude/skills` and `~/.agents/skills`, and agents into
-`~/.claude/agents`. Every entry is a symlink into the clone, so the installed files **are** the
-repo — edit in place, publish with `scripts/publish.sh`. Pick one route or the other; running
-both installs the same content twice.
-
-**The harness, as a plugin or linked for editing:**
-
-```
-/plugin install wave-harness
-```
-
-```bash
 bash ~/agent-skills/scripts/link-harness.sh     # --unlink to remove
 ```
+
+`link-skills.sh` links skills into `~/.claude/skills` and `~/.agents/skills`, and agents into
+`~/.claude/agents`. Every entry is a symlink into the clone, so the installed files **are** the
+repo — edit in place, publish with `scripts/publish.sh` (see
+[Editing and publishing](#editing-and-publishing)).
 
 `link-harness.sh` registers `harness/hooks/hooks.json` in `~/.claude/settings.json` with paths
 into the clone (the first run keeps `settings.json.orig`, every run a timestamped `.bak`), and
 links the three evidence tools into `~/.local/bin`. A registered hook whose file is gone — the
 clone moved or deleted — exits 0 with a message that its guards are off, instead of blocking
-every call. Again, one route or the other: both registers every hook twice. Restart sessions
-afterwards — hooks are read at session start.
+every call. Restart sessions afterwards: hooks are read at session start.
 
-**Skills only, no agents** — for Cursor, Windsurf, OpenCode and other Agent-Skills harnesses:
+Updating is `git pull` in the clone — the symlinks already point into it, so no relinking is
+needed.
+
+### Skills only, no agents
+
+For Cursor, Windsurf, OpenCode and other Agent-Skills harnesses:
 
 ```bash
 npx skills@latest add serhovskyi/agent-skills
 ```
 
 The `skills` CLI has no notion of agents, so this route installs the three skills alone. Supply
-the reviewer agents yourself (see [Reviewer roster](#reviewer-roster) below) or the review stages
-have nothing to dispatch.
+the reviewer agents yourself (see [Reviewer roster](#reviewer-roster)) or the review stages
+have nothing to dispatch. Update by re-running the install.
 
-## Skills
+## The wave pipeline
 
-### The wave pipeline — `wave-prep` · `wave-run` · `wave-close`
+`wave-prep` · `wave-run` · `wave-close`
 
 A **wave** is N written sub-plans of one feature, executed one *link* per session. The three
 skills are one pipeline, used in order, and they exist because of a single measured number:
@@ -105,7 +128,7 @@ waves away.
 
 **Triggers:** "prepare the wave", "run link b2", "close this link", "hand over the next link"
 
-## Requirements
+### Requirements
 
 The wave skills do not work without [**superpowers**](https://github.com/obra/superpowers):
 a wave is the sub-plans its spec-driven development writes, and `wave-run` runs each task
@@ -116,7 +139,7 @@ through its subagent-driven-development scripts.
 | `superpowers` plugin — `spec-driven-development` | writes the sub-plans a wave consumes, into `docs/superpowers/plans/` |
 | `superpowers` plugin — `subagent-driven-development` | `wave-run` calls its `task-brief` and `review-package` scripts for the per-task machinery |
 | `python3` | the three `wave-prep` scripts; **3.11+** for `wave-harness` (it reads `harness.toml` with `tomllib`) |
-| **per-layer reviewer agents** (see below) | two of the four review seats ship here; the stack-specific ones are yours |
+| **your project's reviewer agents** — a frontend and a backend *code* reviewer, a frontend and a backend *plan* reviewer, optionally a devops reviewer (see [Reviewer roster](#reviewer-roster)) | they encode your stack, so they live in your repo's `.claude/agents/`, not here; the two stack-agnostic seats (`gate-evidence-auditor`, `solution-architect-reviewer`) ship with the plugin |
 | **`.claude/wave-profile.md`** in your repo (see [below](#repo-profile)) | your commands, roster and stack traps; `wave-prep` writes it on first use |
 | `wave-harness` *(optional)* | ships the evidence runner the reply contract names; without it the skills fall back to `<cmd> >> <file> 2>&1; echo "EXIT=$?" >> <file>` |
 
@@ -164,6 +187,13 @@ Four properties make these work, and are worth copying from the two shipped agen
 
 Vertical tasks get **both** code reviewers on the same diff file: two lenses, one package.
 
+The roster is open by layer, not fixed at these five. Profile § Reviewers is one row per
+layer (`api/` → agent, `web/` → agent, `infra/` → agent, …), and every stage reads it by
+path: a task gets the reviewer of each layer it touched, the final link review gets every
+reviewer whose layer the link touched. A repo with five layers lists five code reviewers.
+What it does not carry is a second lens on the *same* layer — a security or accessibility
+reviewer has no path of its own, so its concerns belong in the layer reviewer's description.
+
 <a id="repo-profile"></a>
 
 ### The repo profile — what your project adds
@@ -209,10 +239,12 @@ The wave registry lives at `.superpowers/sdd/<wave>/wave.md` **because that path
 Wave state must survive the `git switch` between link branches; a tracked registry travels with
 the branch and lies the moment a link merges.
 
-## Harness
+## The harness
 
 Hooks for Claude Code sessions that share one working tree — several sessions, one index, one
 stash stack. Each rule encodes a loss that already happened.
+
+### Hooks
 
 | hook | event | what it does |
 |---|---|---|
@@ -225,13 +257,17 @@ Refusals are only for irreversible loss; everything routine (commit, merge, swit
 unprompted. A warning never states a permission decision, so it can never answer a prompt the
 user was entitled to see.
 
-**Evidence tools** — what the wave skills' reply contract runs gates through:
+### Evidence tools
+
+What the wave skills' reply contract runs gates through:
 
 | tool | does |
 |---|---|
 | `evidence-run <file> <cmd…>` | appends the command line, its output (test-runner noise trimmed, full log kept beside it) and an `EXIT=` printed by its own shell to `<file>`; without a command it is a usage error |
 | `absence-check --rev R --base B --pattern ERE [--allow path:n]… -- paths` | "the pattern is gone at R": reads revisions, never the working tree, and refuses a base where the pattern never hit |
 | `suite-summary <log>` | the last run's summary lines and its `EXIT=` (an appended log holds several), refusing a run that has none |
+
+<a id="harness-config"></a>
 
 ### The repo's harness config — `.claude/harness.toml`
 
@@ -253,25 +289,29 @@ an invented repo is [`harness/harness.example.toml`](harness/harness.example.tom
 Every rule you add carries its reason in the `reason` string: the warning is the only place the
 next session reads it.
 
-**What the guard cannot see.** `guard_bash` reads the command the agent typed, down to the
-string a `bash -c` carries — but not the commands a script *file* or an interpreter one-liner
-will run. `bash scripts/publish.sh` is one command to it, so it refuses that file by name
-rather than the `git push` inside; a `git stash` inside a Makefile target, or
-`subprocess.run(["git", "push"])` in a `python3 -c`, it does not see at all. Put a script of
-your own whose inner commands must stay the owner's behind your own rule
-(`[[guard_bash.warn_program]]` warns; a refusal is a deny rule added to `guard_bash.py`).
-
 **The guard fails closed, the config fails soft.** A `harness.toml` that does not parse, or an
 entry of the wrong type, is reported once per command as a warning and that entry is dropped —
 the generic rules keep running, and a repo cannot switch them off through its config. A hook
 that crashes refuses the command instead, naming the exception: a crashed guard has judged
 nothing, and the harness would otherwise read its exit as "no verdict".
 
-## Structure
+<a id="guard-limits"></a>
+
+### What the guard cannot see
+
+`guard_bash` reads the command the agent typed, down to the string a `bash -c` carries — but
+not the commands a script *file* or an interpreter one-liner will run. `bash scripts/publish.sh`
+is one command to it, so it refuses that file by name rather than the `git push` inside; a
+`git stash` inside a Makefile target, or `subprocess.run(["git", "push"])` in a `python3 -c`,
+it does not see at all. Put a script of your own whose inner commands must stay the owner's
+behind your own rule (`[[guard_bash.warn_program]]` warns; a refusal is a deny rule added to
+`guard_bash.py`).
+
+## Repository layout
 
 ```
 .claude-plugin/
-├── plugin.json                     # the plugin manifest
+├── plugin.json                     # the wave-skills plugin manifest
 └── marketplace.json                # lets the repo be added as a marketplace
 agents/
 ├── gate-evidence-auditor.md        # evidence, not code — the second review lens
@@ -286,7 +326,7 @@ harness/
 scripts/
 ├── link-skills.sh                  # skills + agents, symlinked for editing
 ├── link-harness.sh                 # hooks + tools, registered for editing
-└── publish.sh
+└── publish.sh                      # stage, denylist-check, commit, push
 skills/
 ├── wave-prep/
 │   ├── SKILL.md
@@ -308,27 +348,24 @@ skills/
 flat: skill names must be unique, since `link-skills.sh` links by basename and the plugin loader
 expects `skills/<name>/SKILL.md`.
 
-## Updating a skill
+## Development
 
-**Recommended setup:** clone this repo to a permanent location and run `link-skills.sh` once.
-After that, `~/.claude/skills/<name>` is a symlink into this repo — editing the skill file in
-place *is* editing the repo. Publishing is a single command.
+### Editing and publishing
 
-```bash
-# One-time setup
-git clone git@github.com:serhovskyi/agent-skills.git ~/agent-skills
-bash ~/agent-skills/scripts/link-skills.sh
-```
-
-Now `~/.claude/skills/wave-prep/SKILL.md` points directly into
+With the [symlink setup](#as-symlinks-to-edit-the-skills-as-you-use-them),
+`~/.claude/skills/wave-prep/SKILL.md` points directly into
 `~/agent-skills/skills/wave-prep/SKILL.md`, and `~/.claude/agents/gate-evidence-auditor.md` into
-`~/agent-skills/agents/`. Edit either however you like, then publish:
+`~/agent-skills/agents/`. Editing the installed file *is* editing the repo. Edit either however
+you like, then publish:
 
 ```bash
 bash ~/agent-skills/scripts/publish.sh "wave-run: name the mirror check per repo"
 ```
 
-That's it — no copying, no separate commit step.
+That's it — no copying, no separate commit step. `publish.sh` stages `skills/`, `agents/`,
+`harness/`, `scripts/`, `.claude-plugin/`, `.github/`, `README.md`, `LICENSE` and `.gitignore`,
+so every edit travels with the skill edits. Bump `version` in `.claude-plugin/plugin.json` (and
+`harness/.claude-plugin/plugin.json`) when a plugin changes meaningfully.
 
 **A project-level copy wins over the link.** Claude Code prefers `<repo>/.claude/skills/<name>`
 and `<repo>/.claude/agents/<name>.md` over the user-level ones, so a repo that still carries its
@@ -336,10 +373,8 @@ own copy of a wave skill or a shipped agent silently runs that copy, and your ed
 wrong file. Delete the repo's copies when you switch to the link; what was repo-specific in them
 belongs in its `.claude/wave-profile.md`.
 
----
-
-**Without the symlink setup** (e.g. you installed via `npx skills@latest add`), copy and push
-manually:
+**Without the symlink setup** (e.g. you installed via `npx skills@latest add`), copy into a
+clone and publish from there:
 
 ```bash
 cp ~/.claude/skills/wave-prep/SKILL.md ~/agent-skills/skills/wave-prep/SKILL.md
@@ -347,17 +382,9 @@ bash ~/agent-skills/scripts/publish.sh "update wave-prep"
 ```
 
 **A publish denylist keeps private projects out** — see
-[Developing inside a private project](#private-project) below.
+[Developing inside a private project](#private-project).
 
-`publish.sh` stages `skills/`, `agents/`, `harness/`, `scripts/`, `.claude-plugin/`, `.github/`
-and `README.md`, so every edit travels with the skill edits.
-
-Plugin users update with `/plugin update wave-skills` (and `wave-harness`); `npx skills@latest add` users re-run the
-install. Users who cloned manually just need `git pull` — the symlinks already point into the
-clone, so no relinking is needed. Bump `version` in `.claude-plugin/plugin.json` when the plugin
-changes meaningfully.
-
-### Adding a new skill
+### Adding a skill
 
 1. Write the skill at `~/.claude/skills/<skill-name>/SKILL.md`, starting with the required
    frontmatter:
@@ -381,7 +408,7 @@ changes meaningfully.
 The `skills` CLI discovers any `SKILL.md` under `skills/` automatically — no registration step.
 Skill names must stay unique: `link-skills.sh` links by basename.
 
-### Adding a new agent
+### Adding an agent
 
 Drop a `<name>.md` into `agents/` with the frontmatter below, then re-run `link-skills.sh`.
 Nothing registers it — `agents/` is discovered by convention.
@@ -400,7 +427,7 @@ does not, so a controller picking reviewers can tell them apart. Keep shared age
 stack and repo specifics — an agent that names your framework belongs in your repo's
 `.claude/agents/`, not here.
 
-## Updating the harness
+### Changing the harness
 
 `link-harness.sh` points the registered hooks and the three tools into the clone, so editing
 `harness/hooks/*.py` or `harness/bin/*` is live in the next session (hooks are read at session
@@ -408,6 +435,7 @@ start). Run the suite before publishing — it is what CI runs:
 
 ```bash
 cd ~/agent-skills && make test                      # ARGS="harness/tests/test_publish.py" narrows it
+make lint                                           # ruff over harness/ and the wave-prep scripts
 ```
 
 Adding a rule to `guard_bash.py`:
@@ -422,11 +450,11 @@ Adding a rule to `guard_bash.py`:
    rule that is gone — is red.
 4. **A new refusal moves a pin.** The deny count is pinned (`test_the_refusals_are_still_refusals`);
    raise it in the same commit, deliberately.
-5. **A rule only your repo needs is config, not code** — `harness.toml`, above.
+5. **A rule only your repo needs is config, not code** — [`harness.toml`](#harness-config).
 
 <a id="private-project"></a>
 
-## Developing inside a private project
+### Developing inside a private project
 
 These skills were grown inside a private codebase, and that is the normal way to keep them
 sharp: the lessons come from real links. It is also how a private project leaks into this
@@ -446,4 +474,3 @@ clone once linked. List the published names from the clone at call time, never f
 list. And when the project keeps a map of its own harness, an entry under `.claude/` that the
 map does not name is worth a red test of its own: it catches a shadow copy at the next run even
 when no guard saw it written.
-
