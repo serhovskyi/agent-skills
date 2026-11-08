@@ -14,6 +14,8 @@ Everything every link shares. Never repeat any of it in a link prompt.
 
 One session per link. Memory between links is the ledger and `git log`, never the dialogue.
 
+**Spec:** `<the design spec the plans implement — the digests' SPEC: line; if they disagree or all say none, ask the owner once; "none" if there is none>`
+
 ## Role
 
 The session running a link is a **controller**, not an implementer. It writes no product
@@ -46,13 +48,14 @@ otherwise learn the hard way. Common ones, as examples of the shape:
 
 The rosters, named once for the whole wave, copied from profile § Reviewers. `wave-prep`
 step 6 uses the plan reviewers; `wave-run` uses the code reviewers per task and again over
-the whole link.
+the whole link, and the spec reviewer once, over the whole link.
 
 | roster | agents |
 |---|---|
 | plan reviewers | <architecture reviewer> + <one per layer> |
 | code reviewers | <one per layer — e.g. backend, frontend> |
 | evidence auditor | <the agent that audits gate claims against the logs> |
+| spec reviewer | <the agent that checks the link's diff against the spec; "none" when the profile has no such row> |
 
 ## Order of links
 

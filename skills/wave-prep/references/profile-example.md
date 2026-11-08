@@ -40,6 +40,7 @@ goes here only when it is about this repo's stack.
 | plan reviewers | `solution-architect-reviewer` + `django-plan-reviewer` (api), `react-plan-reviewer` (web) |
 | code reviewers | `api/` → `django-code-reviewer`; `web/` → `react-code-reviewer` |
 | evidence auditor | `gate-evidence-auditor` |
+| spec reviewer | `spec-reviewer` |
 
 ## Evidence tooling
 

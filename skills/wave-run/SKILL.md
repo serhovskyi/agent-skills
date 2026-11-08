@@ -240,7 +240,7 @@ link's last task, not at task 1. Tests the task's plan text asks for count
 against the **tasks** forecast; tests a review fix or evidence round adds count against the
 **close allowance** (WAVE link prompt, Forecast).
 
-## Final link review — always opus, two lenses
+## Final link review — always opus, two lenses, and the spec when the roster names it
 
 1. **The code**: the whole link's diff against its base — every code-reviewer whose layer
    the link touched, all on opus, all over the **whole** range. Each has so far seen only
@@ -253,9 +253,15 @@ against the **tasks** forecast; tests a review fix or evidence round adds count 
    that was already red, or red because of a neighbouring session, proves nothing about
    this link. It never moves the tree: a gate it cannot prove read-only comes back UNPROVEN
    with the command, and running that command is yours.
-3. **The page, by eye**, when the link changes a screen: the controller shoots light and
+3. **The diff against the spec**, only when `WAVE.md` § Reviewers names a spec reviewer
+   (a `spec-reviewer` agent is the reference implementation) **and** its `**Spec:**` line
+   is a path. It gets the same whole-link diff file as the first lens, the spec path from
+   `WAVE.md`, and the link's plan path — the reviewer reads the plan, you do not. Save its verdict as `final-review-spec.md` and
+   report it beside the other lenses, never merged into them or ranked against them: a
+   link can pass the code and still build the wrong thing.
+4. **The page, by eye**, when the link changes a screen: the controller shoots light and
    dark frames at desktop and mobile width against the running app and compares them with
-   the signed-off mockup, before the two lenses above. A value glued to its unit and
+   the signed-off mockup, before the lenses above. A value glued to its unit and
    stripped of its muted style («11,4г» for «11,4 г») passed the task review, both final
    lenses' first pass and the whole suite; only the frames showed it.
 

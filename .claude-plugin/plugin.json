@@ -1,7 +1,7 @@
 {
   "name": "wave-skills",
-  "version": "0.2.0",
-  "description": "Execute a wave of sub-plans one link per session without drowning the controller's context. Three skills — wave-prep, wave-run, wave-close — plus the evidence auditor and architecture reviewer they dispatch. Requires superpowers: a wave is the sub-plans its spec-driven development writes, and wave-run runs each task through its subagent-driven-development scripts. The controller never reads a plan body, because six plans of one real wave are 3752 lines.",
+  "version": "0.3.0",
+  "description": "Execute a wave of sub-plans one link per session without drowning the controller's context. Five skills — wave-grill before the wave, wave-prep, wave-run and wave-close for it, wave-retro after it — plus the evidence auditor, architecture, spec and standards reviewers they dispatch. Requires superpowers: a wave is the sub-plans its spec-driven development writes, and wave-run runs each task through its subagent-driven-development scripts. The controller never reads a plan body, because six plans of one real wave are 3752 lines.",
   "author": {
     "name": "Yurii Serhovskyi"
   },
@@ -14,6 +14,8 @@
     "subagent",
     "code-review",
     "planning",
-    "context-economy"
+    "context-economy",
+    "grilling",
+    "retrospective"
   ]
 }

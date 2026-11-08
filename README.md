@@ -9,7 +9,7 @@ Two plugins, one marketplace, installable separately:
 
 | plugin | what it ships |
 |---|---|
-| `wave-skills` | `wave-prep` · `wave-run` · `wave-close`, and the two reviewer agents they dispatch |
+| `wave-skills` | `wave-grill` before the wave, `wave-prep` · `wave-run` · `wave-close` for it, `wave-retro` after it, and the four reviewer agents they dispatch |
 | `wave-harness` | hooks that refuse irreversible git and warn on blind commands, plus `evidence-run`, `absence-check`, `suite-summary` |
 
 They are independent, but they were measured together: the skills' reply contract records every
@@ -40,11 +40,15 @@ which is the stage you least want to lose.
   - [Adding an agent](#adding-an-agent)
   - [Changing the harness](#changing-the-harness)
   - [Developing inside a private project](#private-project)
+- [Credits](#credits)
 
 ## Installation
 
 Pick **one route per component**. Running two routes installs the same content twice — the
 plugin and the symlinks, or the plugin and the hook registration.
+
+**Only the plugin and symlink routes install the reviewer agents.** `npx skills add` installs
+skills alone — see [Skills only, no agents](#skills-only-no-agents) for what that leaves out.
 
 ### As plugins (recommended)
 
@@ -88,9 +92,22 @@ For Cursor, Windsurf, OpenCode and other Agent-Skills harnesses:
 npx skills@latest add serhovskyi/waveflow
 ```
 
-The `skills` CLI has no notion of agents, so this route installs the three skills alone. Supply
-the reviewer agents yourself (see [Reviewer roster](#reviewer-roster)) or the review stages
-have nothing to dispatch. Update by re-running the install.
+> **This route installs no agents.** The `skills` CLI has no notion of agents, so you get the
+> five skills and none of the four reviewers they dispatch. Without them:
+>
+> | missing agent | what stops working |
+> |---|---|
+> | `gate-evidence-auditor` | `wave-run`'s per-task gate audit and the final review's evidence lens |
+> | `solution-architect-reviewer` | `wave-prep` step 6, the plan review |
+> | `spec-reviewer` | the final review's spec lens |
+> | `standards-reviewer` | the code review of any layer that has no reviewer of your own |
+>
+> Copy them from [`agents/`](agents/) into your harness's agent directory, or supply your own
+> for each role (see [Reviewer roster](#reviewer-roster)), before the first wave — a review
+> stage with nothing to dispatch is the stage you least want to lose.
+
+Installed skills do not update themselves: the CLI copies the files, so re-run the install to
+update.
 
 ## From feature to wave
 
@@ -100,23 +117,35 @@ outcome. The whole flow, in order:
 1. **Cut a slice.** A wave is one decomposed part of a big feature, never the feature whole:
    a part with its own precondition, its own done-state and its own gates. A feature too big
    to grill in one sitting is too big for one wave; cut it first, then grill the first slice.
-2. **Grill the slice.** An interview, one question at a time, each question carrying a
-   recommended answer, and anything the repo can answer explored instead of asked. It ends
-   when every branch of the decision tree is resolved — reversed decisions mid-wave are what
-   this step exists to prevent. `superpowers:brainstorming` does this; a "grill me"-style
-   skill that walks the tree branch by branch works as well.
+2. **Grill the slice** — `/wave-grill`. An interview in rounds: each round asks every
+   question whose prerequisites are settled, numbered, each with a recommended answer, and
+   anything the repo can answer is explored by a subagent instead of asked. The first round
+   checks the slice is one slice (precondition, done-state, gates); every behaviour gets a
+   "what goes red without it?" question. Decisions go into
+   `docs/superpowers/specs/YYYY-MM-DD-<topic>-decisions.md` after every round, terms into
+   `GLOSSARY.md`, the rare hard-to-reverse trade-off into `docs/adr/`. It ends when every
+   branch of the decision tree is resolved — reversed decisions mid-wave are what this step
+   exists to prevent.
 3. **Spec it** — spec-driven development. The grilled decisions become one design spec,
    `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`, committed. The spec is what the
    plans, the reviewers and the wave-close questions are measured against.
 4. **Plan it, one sub-plan per link.** `superpowers:writing-plans` writes the plans into
    `docs/superpowers/plans/<wave>-<link>.md`, one file per link, sharing a stem. Each plan
    states the link it depends on: `wave-prep` derives the link order from those preconditions,
-   never from the alphabet.
+   never from the alphabet. A wide mechanical change that cannot land green as one link
+   (a renamed column, a retyped shared symbol) is planned **expand–contract**: add the new
+   form beside the old, migrate callers in batches, one link each, then delete the old form.
 5. **Then the wave:** `wave-prep` once, `wave-run` and `wave-close` once per link, each link
    in a fresh session.
+6. **Retro, when it went badly** — `/wave-retro` reads the closed wave's records and proposes
+   changes to the agents' environment — checks, pointers, reviewer rules, the repo profile —
+   for the owner to pick from.
 
-The skills below consume step 4. They do not grill, spec or plan — a wave prepared
-from an ungrilled slice runs fine and ships the wrong thing.
+The pipeline below consumes step 4. It does not grill, spec or plan — a wave prepared from an
+ungrilled slice runs fine and ships the wrong thing.
+
+`wave-grill` and `wave-retro` run only when you invoke them: a grill needs the owner at the
+keyboard, and a retro is the owner's call.
 
 ## The wave pipeline
 
@@ -134,7 +163,7 @@ dispatches, measures and records.
 | skill | when | what it does |
 |---|---|---|
 | **`wave-prep`** | plans exist, `<wave>-WAVE.md` does not | derives link order, counts structure with a script, probes every plan against the live tree, dispatches one ≤60-line digest subagent per plan, writes the wave documents, prints the first link's start block |
-| **`wave-run`** | one link, one fresh session | verifies start predicates, dispatches implementer → reviewer per task with the model named, keeps the ledger, runs the final two-lens link review |
+| **`wave-run`** | one link, one fresh session | verifies start predicates, dispatches implementer → reviewer per task with the model named, keeps the ledger, runs the final link review — code, evidence, and the spec when the roster names a spec reviewer |
 | **`wave-close`** | a link's tasks are done | summary from the ledger, four owner questions one at a time, local merge, re-probes the next plan for drift, writes the relay and the next start block |
 
 **Why three and not one:** `wave-close` reads the *ledger*, never the dialogue — so a link can
@@ -167,7 +196,7 @@ through its subagent-driven-development scripts.
 | `superpowers` plugin — `brainstorming`, `writing-plans` | spec-driven development: the spec a wave implements (`docs/superpowers/specs/`) and the sub-plans it consumes (`docs/superpowers/plans/`), see [From feature to wave](#from-feature-to-wave) |
 | `superpowers` plugin — `subagent-driven-development` | `wave-run` calls its `task-brief` and `review-package` scripts for the per-task machinery |
 | `python3` | the three `wave-prep` scripts; **3.11+** for `wave-harness` (it reads `harness.toml` with `tomllib`) |
-| **your project's reviewer agents** — a frontend and a backend *code* reviewer, a frontend and a backend *plan* reviewer, optionally a devops reviewer (see [Reviewer roster](#reviewer-roster)) | they encode your stack, so they live in your repo's `.claude/agents/`, not here; the two stack-agnostic seats (`gate-evidence-auditor`, `solution-architect-reviewer`) ship with the plugin |
+| **your project's reviewer agents** — a frontend and a backend *code* reviewer, a frontend and a backend *plan* reviewer, optionally a devops reviewer (see [Reviewer roster](#reviewer-roster)) | they encode your stack, so they live in your repo's `.claude/agents/`, not here; the four stack-agnostic seats (`gate-evidence-auditor`, `solution-architect-reviewer`, `spec-reviewer`, `standards-reviewer`) ship with the plugin |
 | **`.claude/wave-profile.md`** in your repo (see [below](#repo-profile)) | your commands, roster and stack traps; `wave-prep` writes it on first use |
 | `wave-harness` *(optional)* | ships the evidence runner the reply contract names; without it the skills fall back to `<cmd> >> <file> 2>&1; echo "EXIT=$?" >> <file>` |
 
@@ -178,12 +207,14 @@ through its subagent-driven-development scripts.
 The skills dispatch reviewers **by role**, never by hardcoded name. Record the roster once in
 `WAVE.md` § Reviewers, and every link reads it from there.
 
-**Shipped with this plugin** — both are stack-agnostic, so they work in any repo:
+**Shipped with this plugin** — all four are stack-agnostic, so they work in any repo:
 
 | agent | model | seat |
 |---|---|---|
 | `gate-evidence-auditor` | opus | `wave-run`, final review — second lens |
 | `solution-architect-reviewer` | opus | `wave-prep` step 6 — plan review |
+| `spec-reviewer` | opus | `wave-run`, final review — the spec lens, when the roster names it |
+| `standards-reviewer` | sonnet | `wave-run`, per task and final — the code reviewer of a layer that has none of its own |
 
 `gate-evidence-auditor` is the one worth having if you have only one. It reads the ledger, the
 report files and the logs — **not** the diff — and answers one question per gate: *did it go red,
@@ -191,6 +222,14 @@ and for OUR reason?* Verdicts are `OURS` / `NOT OURS` / `UNPROVEN`, and it carri
 catalogue of ways a gate stays silent (path-scoped rules, pinned equalities, discriminating pairs
 true by absence, environment-green, …). It is read-only and will refuse to move the tree: a proof
 that needs a checkout comes back `UNPROVEN` with the exact command for you to run.
+
+`spec-reviewer` judges the whole link's diff against the design spec, scoped to the part of the
+spec the link's plan owns: what is missing or wrong, what nobody asked for, and where the plan
+itself departs from the spec — each with the spec line quoted. `standards-reviewer` judges a diff
+against the repo's documented standards plus a fixed baseline of twelve code smells, the smells
+always as judgement calls the repo's own standards override. Its findings and the spec lens's are
+reported side by side, never merged or ranked against each other: code can follow every standard
+and build the wrong thing, or build the right thing against every convention.
 
 **You supply these** — they encode your stack, so a shared copy would be worse than none:
 
@@ -202,7 +241,7 @@ that needs a checkout comes back `UNPROVEN` with the exact command for you to ru
 | **backend plan reviewer** | opus | ditto for the backend stack. | `wave-prep` step 6 |
 | **devops reviewer** *(optional)* | opus | your deploy, CI and migration shape — reversible migrations, table locks, backfills, workflow files. | `wave-prep` step 6, when a plan touches infra |
 
-Four properties make these work, and are worth copying from the two shipped agents:
+Four properties make these work, and are worth copying from the shipped agents:
 
 1. **Read-only.** `tools: Read, Grep, Glob, Bash`, no writes, and never `make`/tests/migrations —
    the owner runs those.
@@ -219,8 +258,9 @@ The roster is open by layer, not fixed at these five. Profile § Reviewers is on
 layer (`api/` → agent, `web/` → agent, `infra/` → agent, …), and every stage reads it by
 path: a task gets the reviewer of each layer it touched, the final link review gets every
 reviewer whose layer the link touched. A repo with five layers lists five code reviewers.
-What it does not carry is a second lens on the *same* layer — a security or accessibility
-reviewer has no path of its own, so its concerns belong in the layer reviewer's description.
+Beyond the evidence-auditor and spec-reviewer rows, it does not carry a second lens on the
+*same* layer — a security or accessibility reviewer has no path of its own, so its concerns
+belong in the layer reviewer's description.
 
 <a id="repo-profile"></a>
 
@@ -422,7 +462,9 @@ files carry the structure:
 └── marketplace.json                # lets the repo be added as a marketplace
 agents/
 ├── gate-evidence-auditor.md        # evidence, not code — the second review lens
-└── solution-architect-reviewer.md  # plan review, before any code exists
+├── solution-architect-reviewer.md  # plan review, before any code exists
+├── spec-reviewer.md                # the link's diff against the spec
+└── standards-reviewer.md           # a diff against documented standards + a smell baseline
 Makefile                            # make test · make lint · make format
 ruff.toml                           # lint and format rules; also lists the extensionless scripts
 harness/
@@ -436,6 +478,11 @@ scripts/
 ├── link-harness.sh                 # hooks + tools, registered for editing
 └── publish.sh                      # stage, denylist-check, commit, push
 skills/
+├── wave-grill/
+│   ├── SKILL.md
+│   ├── references/glossary-format.md
+│   ├── references/adr-format.md
+│   └── LICENSE, CREDITS.md         # adapted from mattpocock/skills, MIT
 ├── wave-prep/
 │   ├── SKILL.md
 │   ├── references/templates.md     # WAVE.md, LINK-PROMPT, registry
@@ -447,9 +494,13 @@ skills/
 │       └── profile-probe           # repo profile vs. the live tree
 ├── wave-run/
 │   └── SKILL.md
-└── wave-close/
+├── wave-close/
+│   ├── SKILL.md
+│   └── references/templates.md     # link report, relay, post-wave prompt
+└── wave-retro/
     ├── SKILL.md
-    └── references/templates.md     # link report, relay, post-wave prompt
+    └── LICENSE, CREDITS.md         # adapted from mattpocock/skills, MIT
+THIRD-PARTY-NOTICES.md              # what is adapted from where, and its license
 ```
 
 `agents/` and `skills/` are discovered by convention, so the manifest names no paths. Both are
@@ -471,7 +522,7 @@ bash ~/waveflow/scripts/publish.sh "wave-run: name the mirror check per repo"
 ```
 
 That's it — no copying, no separate commit step. `publish.sh` stages `skills/`, `agents/`,
-`harness/`, `scripts/`, `.claude-plugin/`, `.github/`, `README.md`, `LICENSE`, `.gitignore`,
+`harness/`, `scripts/`, `.claude-plugin/`, `.github/`, `README.md`, `LICENSE`, `THIRD-PARTY-NOTICES.md`, `.gitignore`,
 `Makefile`, `ruff.toml` and `package.json`, so every edit travels with the skill edits. Bump `version` in `.claude-plugin/plugin.json` (and
 `harness/.claude-plugin/plugin.json`) when a plugin changes meaningfully.
 
@@ -582,3 +633,11 @@ clone once linked. List the published names from the clone at call time, never f
 list. And when the project keeps a map of its own harness, an entry under `.claude/` that the
 map does not name is worth a red test of its own: it catches a shadow copy at the next run even
 when no guard saw it written.
+
+## Credits
+
+`wave-grill`, `wave-retro`, `spec-reviewer` and `standards-reviewer` are adapted from
+[mattpocock/skills](https://github.com/mattpocock/skills) by Matt Pocock, under the MIT License.
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) lists what came from where and carries the
+license; each adapted skill keeps its own `LICENSE` and a `CREDITS.md` saying what changed, so
+the notice travels with a skill installed on its own.

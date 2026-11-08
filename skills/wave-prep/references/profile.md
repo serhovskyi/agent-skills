@@ -37,8 +37,9 @@ must never run together on this host, settings that turn a warning into a failur
 | roster | agents |
 |---|---|
 | plan reviewers | <architecture reviewer> + <one per layer> |
-| code reviewers | <layer → agent, one row each, e.g. `src/server/` → backend-code-reviewer> |
+| code reviewers | <layer → agent, one row each, e.g. `src/server/` → backend-code-reviewer; `standards-reviewer` for a layer with no reviewer of its own> |
 | evidence auditor | <usually gate-evidence-auditor> |
+| spec reviewer | <usually spec-reviewer, or "none"> |
 
 ## Evidence tooling
 

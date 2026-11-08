@@ -47,6 +47,7 @@ class Clone:
             self.write(f"{directory}/.keep", "")
         self.write("README.md", "readme\n")
         self.write("LICENSE", "license\n")
+        self.write("THIRD-PARTY-NOTICES.md", "notices\n")
         self.write(".gitignore", "*.log\n")
         self.write("Makefile", "test:\n\ttrue\n")
         self.write("ruff.toml", "line-length = 100\n")

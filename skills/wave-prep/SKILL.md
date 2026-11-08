@@ -134,6 +134,7 @@ EXTERNAL FIXTURES: <task> — <format> — real artifact in hand: yes | no
 PREDICATES: <predicate>   (start conditions, as predicates, not descriptions)
 COLLISIONS: <task or plan> ↔ <task or plan> — <shared file or interface>
 STALE SUSPICIONS: <what looks older than the tree>
+SPEC: <the design spec path the plan cites, or none>
 ```
 
 **GATES is checked against the roster, not against memory.** Give each subagent the gate
@@ -177,7 +178,7 @@ See `references/templates.md` for all four.
 | document | holds |
 |---|---|
 | `.claude/wave-profile.md` | only when missing — the repo's values, see "The repo profile" |
-| `docs/superpowers/plans/<wave>-WAVE.md` | order and why, gates lens, model policy, baseline method, the don't-do list |
+| `docs/superpowers/plans/<wave>-WAVE.md` | the spec path, order and why, gates lens, model policy, baseline method, the don't-do list |
 | `docs/superpowers/plans/<wave>-LINK-<id>-PROMPT.md` | start predicates, per-task models, forecast Δ, relay pointer |
 | `.superpowers/sdd/<wave>/wave.md` | the registry: link status, measured numbers, deferred minors, issues, decisions |
 
