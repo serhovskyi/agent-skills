@@ -12,7 +12,7 @@ set -euo pipefail
 #
 # This is the editing workflow: the linked files ARE the repo, so edit in place
 # and publish with scripts/publish.sh. Installing the plugin instead
-# (/plugin marketplace add serhovskyi/agent-skills) gets you the same content
+# (/plugin marketplace add serhovskyi/waveflow) gets you the same content
 # read-only, and the two are alternatives — do not run both.
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"

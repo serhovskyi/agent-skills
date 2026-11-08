@@ -66,6 +66,7 @@ class Recording:
             capture_output=True,
             timeout=SUBPROCESS_HANG_BUDGET_SECONDS,
             env=_env_with(path_prefix),
+            check=False,
         )
         self.lines = self.evidence.read_text(encoding="utf-8").splitlines()
 
@@ -269,6 +270,7 @@ def _summary(log: Path, script: Path = SUITE_SUMMARY) -> subprocess.CompletedPro
         capture_output=True,
         text=True,
         timeout=SUBPROCESS_HANG_BUDGET_SECONDS,
+        check=False,
     )
 
 
@@ -432,6 +434,7 @@ def test_evidence_run_without_a_command_is_a_usage_error_not_an_exit_0(tmp_path,
         capture_output=True,
         text=True,
         timeout=SUBPROCESS_HANG_BUDGET_SECONDS,
+        check=False,
     )
 
     assert result.returncode == 2

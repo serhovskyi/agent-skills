@@ -131,7 +131,8 @@ def trim(block):
     if len(block) > CAP:
         block = [
             *block[:CAP],
-            f"  … {len(block) - CAP} more lines — the judgment subagent reads this section, you do not",
+            f"  … {len(block) - CAP} more lines — "
+            "the judgment subagent reads this section, you do not",
         ]
     return block
 
@@ -145,7 +146,8 @@ def digest(path):
     levels = sorted({t["level"] for t in tasks})
     out = [
         f"plan: {path}",
-        f"lines: {len(lines)}   tasks: {len(tasks)}   heading level: {'/'.join('#' * n for n in levels)}",
+        f"lines: {len(lines)}   tasks: {len(tasks)}   "
+        f"heading level: {'/'.join('#' * n for n in levels)}",
         "",
         "TASKS",
         "  #  steps  it(  title",

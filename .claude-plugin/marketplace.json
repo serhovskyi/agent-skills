@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "serhovskyi-agent-skills",
-  "description": "Yurii's personal agent tooling — the wave pipeline for executing multi-plan features one link per session, and the harness that guards the shared tree it runs in.",
+  "name": "serhovskyi-waveflow",
+  "description": "waveflow — Wave Development Flow: the wave pipeline for executing multi-plan features one link per session, and the harness that guards the shared tree it runs in.",
   "owner": {
     "name": "Yurii Serhovskyi"
   },
@@ -14,7 +14,7 @@
       },
       "category": "development",
       "source": "./",
-      "homepage": "https://github.com/serhovskyi/agent-skills"
+      "homepage": "https://github.com/serhovskyi/waveflow"
     },
     {
       "name": "wave-harness",
@@ -24,7 +24,7 @@
       },
       "category": "development",
       "source": "./harness",
-      "homepage": "https://github.com/serhovskyi/agent-skills"
+      "homepage": "https://github.com/serhovskyi/waveflow"
     }
   ]
 }

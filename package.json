@@ -1,10 +1,10 @@
 {
-  "name": "serhovskyi-agent-skills",
+  "name": "waveflow",
   "version": "2.0.0",
-  "description": "Yurii's personal agent skills — the wave pipeline for executing multi-plan features",
+  "description": "waveflow — Wave Development Flow: the wave pipeline that ships a multi-plan feature one link per session, and the harness that keeps the shared tree honest",
   "repository": {
     "type": "git",
-    "url": "https://github.com/serhovskyi/agent-skills"
+    "url": "https://github.com/serhovskyi/waveflow"
   },
   "license": "MIT",
   "packageManager": "npm@10.9.4"

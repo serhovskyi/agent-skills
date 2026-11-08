@@ -20,6 +20,7 @@ def main() -> None:
             capture_output=True,
             text=True,
             timeout=5,
+            check=False,
         )
     except (OSError, subprocess.SubprocessError):
         sys.exit(0)

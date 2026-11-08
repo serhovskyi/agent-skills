@@ -260,8 +260,8 @@ def candidate_paths(lines):
         tokens = PATH_IN_TICKS.findall(line)
         if in_fence:
             tokens += line.split()
-        for token in tokens:
-            token = token.strip().strip("'\"").rstrip(",;:.")
+        for raw in tokens:
+            token = raw.strip().strip("'\"").rstrip(",;:.")
             if "://" in token or not PATH_SHAPE.match(token):
                 continue
             if "/" not in token:
@@ -314,7 +314,8 @@ def probe(plan, tree, created):
                 findings.append(
                     (
                         "UNPARSED",
-                        f"{plan}:{entry_line} → {verb}: `{token[:80]}` — not a shape this net checks",
+                        f"{plan}:{entry_line} → {verb}: `{token[:80]}` — "
+                        "not a shape this net checks",
                     )
                 )
             continue
@@ -326,11 +327,10 @@ def probe(plan, tree, created):
                 findings.append(("COLLISION", f"{verb}: {pattern} — already exists in the tree"))
         elif verb == "Test":
             created.update(expanded)
-        elif verb in MUST_EXIST and not present:
-            if not any(e in created for e in expanded):
-                findings.append(
-                    ("MISSING", f"{verb}: {pattern} — absent, and no earlier plan creates it")
-                )
+        elif verb in MUST_EXIST and not present and not any(e in created for e in expanded):
+            findings.append(
+                ("MISSING", f"{verb}: {pattern} — absent, and no earlier plan creates it")
+            )
 
     for token, line_no in sorted(candidate_paths(lines).items(), key=lambda kv: kv[1]):
         normal = tree.under_alias(token)[0]
@@ -421,10 +421,14 @@ def main():
                     print(f"  read      {msg}")
 
     print(
-        "\nEvidence, not a verdict. MOVED means the path is gone while that filename lives elsewhere — a plan pointing at an\n"
-        "address a neighbouring link moved. DEAD means path and directory both gone. NEW? means absent\n"
-        "while its directory is live, which is what a file the plan creates looks like. UNPARSED means a\n"
-        "Files: entry named something path-shaped that this net could not check — nobody verified it.\n"
+        "\nEvidence, not a verdict. MOVED means the path is gone while that filename lives "
+        "elsewhere — a plan pointing at an\n"
+        "address a neighbouring link moved. DEAD means path and directory both gone. "
+        "NEW? means absent\n"
+        "while its directory is live, which is what a file the plan creates looks like. "
+        "UNPARSED means a\n"
+        "Files: entry named something path-shaped that this net could not check — "
+        "nobody verified it.\n"
         "Read, then decide."
     )
     sys.exit(1 if hard else 0)

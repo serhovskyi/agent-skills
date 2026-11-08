@@ -1,0 +1,28 @@
+# One config for everything Python in this repo: the hooks, the evidence tools, the tests and
+# the wave-prep scripts. `make lint` and CI run `ruff check .` and `ruff format --check .`.
+
+target-version = "py311"   # the harness reads harness.toml with tomllib
+line-length = 100          # the width the prose and the existing code wrap at
+
+# Extensionless Python that ruff would otherwise never see (absence-check, evidence-run and
+# suite-summary are shell).
+extend-include = ["skills/wave-prep/scripts/*"]
+
+[lint]
+select = [
+  "E", "W",   # pycodestyle
+  "F",        # pyflakes
+  "I",        # isort
+  "UP",       # pyupgrade, to the target version
+  "B",        # bugbear
+  "SIM",      # simplify
+  "RUF",      # ruff's own
+  "PLE", "PLW",  # pylint errors and warnings
+]
+
+[lint.per-file-ignores]
+# Tests assert in the open and name fixtures by argument.
+"harness/tests/*" = ["PLW0603"]
+
+[format]
+docstring-code-format = true

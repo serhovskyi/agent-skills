@@ -37,7 +37,7 @@ lint = "make lint-web"
 [[guard_bash.warn_make]]
 id = "make-ci-is-local"
 targets = ["ci", "verify"]
-reason = "`make {{target}}` runs only here; CI runs .github/workflows/ci.yml. Green here is not green there."
+reason = "`make {{target}}` runs only here; CI runs ci.yml. Green here is not green there."
 
 [[guard_bash.warn_program]]
 id = "npx-prettier"
@@ -64,6 +64,7 @@ def run_hook(hook: Path, payload: dict, env: dict | None = None) -> dict:
         text=True,
         timeout=SUBPROCESS_HANG_BUDGET_SECONDS,
         env={**os.environ, **env} if env else None,
+        check=False,
     )
     assert result.returncode == 0, f"{hook.name} exited {result.returncode}: {result.stderr}"
     return json.loads(result.stdout) if result.stdout.strip() else {}

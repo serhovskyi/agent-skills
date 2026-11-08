@@ -1,9 +1,9 @@
-# Agent Skills
+# waveflow
 
-**Personal agent skills for AI coding assistants.** Dev workflow tooling, starting with the
-**wave** pipeline for executing multi-plan features without drowning the controller's context,
-and the **harness** of hooks and evidence tools that keeps sessions sharing one working tree
-honest.
+**Wave Development Flow: ship a big feature as a wave — one grilled slice, one spec, N plans,
+one link per session.** Two Claude Code plugins: the **wave** pipeline that executes a
+multi-plan feature without drowning the controller's context, and the **harness** of hooks and
+evidence tools that keeps sessions sharing one working tree honest.
 
 Two plugins, one marketplace, installable separately:
 
@@ -22,6 +22,7 @@ which is the stage you least want to lose.
 ## Contents
 
 - [Installation](#installation)
+- [From feature to wave](#from-feature-to-wave)
 - [The wave pipeline](#the-wave-pipeline)
   - [Requirements](#requirements)
   - [Reviewer roster](#reviewer-roster)
@@ -50,7 +51,7 @@ plugin and the symlinks, or the plugin and the hook registration.
 Skills and agents together, and the harness beside them:
 
 ```
-/plugin marketplace add serhovskyi/agent-skills
+/plugin marketplace add serhovskyi/waveflow
 /plugin install wave-skills
 /plugin install wave-harness
 ```
@@ -60,9 +61,9 @@ Update later with `/plugin update wave-skills` (and `wave-harness`).
 ### As symlinks, to edit the skills as you use them
 
 ```bash
-git clone git@github.com:serhovskyi/agent-skills.git ~/agent-skills
-bash ~/agent-skills/scripts/link-skills.sh
-bash ~/agent-skills/scripts/link-harness.sh     # --unlink to remove
+git clone git@github.com:serhovskyi/waveflow.git ~/waveflow
+bash ~/waveflow/scripts/link-skills.sh
+bash ~/waveflow/scripts/link-harness.sh     # --unlink to remove
 ```
 
 `link-skills.sh` links skills into `~/.claude/skills` and `~/.agents/skills`, and agents into
@@ -84,12 +85,38 @@ needed.
 For Cursor, Windsurf, OpenCode and other Agent-Skills harnesses:
 
 ```bash
-npx skills@latest add serhovskyi/agent-skills
+npx skills@latest add serhovskyi/waveflow
 ```
 
 The `skills` CLI has no notion of agents, so this route installs the three skills alone. Supply
 the reviewer agents yourself (see [Reviewer roster](#reviewer-roster)) or the review stages
 have nothing to dispatch. Update by re-running the install.
+
+## From feature to wave
+
+The wave skills start where the plans end, and the steps before them decide most of the
+outcome. The whole flow, in order:
+
+1. **Cut a slice.** A wave is one decomposed part of a big feature, never the feature whole:
+   a part with its own precondition, its own done-state and its own gates. A feature too big
+   to grill in one sitting is too big for one wave; cut it first, then grill the first slice.
+2. **Grill the slice.** An interview, one question at a time, each question carrying a
+   recommended answer, and anything the repo can answer explored instead of asked. It ends
+   when every branch of the decision tree is resolved — reversed decisions mid-wave are what
+   this step exists to prevent. `superpowers:brainstorming` does this; a "grill me"-style
+   skill that walks the tree branch by branch works as well.
+3. **Spec it** — spec-driven development. The grilled decisions become one design spec,
+   `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`, committed. The spec is what the
+   plans, the reviewers and the wave-close questions are measured against.
+4. **Plan it, one sub-plan per link.** `superpowers:writing-plans` writes the plans into
+   `docs/superpowers/plans/<wave>-<link>.md`, one file per link, sharing a stem. Each plan
+   states the link it depends on: `wave-prep` derives the link order from those preconditions,
+   never from the alphabet.
+5. **Then the wave:** `wave-prep` once, `wave-run` and `wave-close` once per link, each link
+   in a fresh session.
+
+The skills below consume step 4. They do not grill, spec or plan — a wave prepared
+from an ungrilled slice runs fine and ships the wrong thing.
 
 ## The wave pipeline
 
@@ -137,7 +164,7 @@ through its subagent-driven-development scripts.
 
 | requirement | why |
 |---|---|
-| `superpowers` plugin — `spec-driven-development` | writes the sub-plans a wave consumes, into `docs/superpowers/plans/` |
+| `superpowers` plugin — `brainstorming`, `writing-plans` | spec-driven development: the spec a wave implements (`docs/superpowers/specs/`) and the sub-plans it consumes (`docs/superpowers/plans/`), see [From feature to wave](#from-feature-to-wave) |
 | `superpowers` plugin — `subagent-driven-development` | `wave-run` calls its `task-brief` and `review-package` scripts for the per-task machinery |
 | `python3` | the three `wave-prep` scripts; **3.11+** for `wave-harness` (it reads `harness.toml` with `tomllib`) |
 | **your project's reviewer agents** — a frontend and a backend *code* reviewer, a frontend and a backend *plan* reviewer, optionally a devops reviewer (see [Reviewer roster](#reviewer-roster)) | they encode your stack, so they live in your repo's `.claude/agents/`, not here; the two stack-agnostic seats (`gate-evidence-auditor`, `solution-architect-reviewer`) ship with the plugin |
@@ -375,8 +402,9 @@ the damage is measured, not inherited from a note.
 ### Tests
 
 `make test` runs the harness suite under `harness/tests/`, the same thing CI runs
-(`.github/workflows/test.yml`); `make lint` runs ruff over the hooks, the tools and the
-`wave-prep` scripts. Three files carry the structure:
+(`.github/workflows/test.yml`); `make lint` runs ruff over the hooks, the tools, the tests and
+the `wave-prep` scripts, with the rules in `ruff.toml`, and `make format` applies them. Three
+files carry the structure:
 
 - `test_hook_rules.py` — one witness per rule: a payload, the hook, the verdict, with
   `rule: <id>` in the docstring. `test_hook_rules_forms.py` runs the same rules through the
@@ -395,7 +423,8 @@ the damage is measured, not inherited from a note.
 agents/
 ├── gate-evidence-auditor.md        # evidence, not code — the second review lens
 └── solution-architect-reviewer.md  # plan review, before any code exists
-Makefile                            # make test · make lint
+Makefile                            # make test · make lint · make format
+ruff.toml                           # lint and format rules; also lists the extensionless scripts
 harness/
 ├── .claude-plugin/plugin.json      # the wave-harness plugin
 ├── hooks/                          # hooks.json + the four hooks, repo_config.py reads harness.toml
@@ -433,17 +462,17 @@ expects `skills/<name>/SKILL.md`.
 
 With the [symlink setup](#as-symlinks-to-edit-the-skills-as-you-use-them),
 `~/.claude/skills/wave-prep/SKILL.md` points directly into
-`~/agent-skills/skills/wave-prep/SKILL.md`, and `~/.claude/agents/gate-evidence-auditor.md` into
-`~/agent-skills/agents/`. Editing the installed file *is* editing the repo. Edit either however
+`~/waveflow/skills/wave-prep/SKILL.md`, and `~/.claude/agents/gate-evidence-auditor.md` into
+`~/waveflow/agents/`. Editing the installed file *is* editing the repo. Edit either however
 you like, then publish:
 
 ```bash
-bash ~/agent-skills/scripts/publish.sh "wave-run: name the mirror check per repo"
+bash ~/waveflow/scripts/publish.sh "wave-run: name the mirror check per repo"
 ```
 
 That's it — no copying, no separate commit step. `publish.sh` stages `skills/`, `agents/`,
-`harness/`, `scripts/`, `.claude-plugin/`, `.github/`, `README.md`, `LICENSE` and `.gitignore`,
-so every edit travels with the skill edits. Bump `version` in `.claude-plugin/plugin.json` (and
+`harness/`, `scripts/`, `.claude-plugin/`, `.github/`, `README.md`, `LICENSE`, `.gitignore`,
+`Makefile`, `ruff.toml` and `package.json`, so every edit travels with the skill edits. Bump `version` in `.claude-plugin/plugin.json` (and
 `harness/.claude-plugin/plugin.json`) when a plugin changes meaningfully.
 
 **A project-level copy wins over the link.** Claude Code prefers `<repo>/.claude/skills/<name>`
@@ -456,8 +485,8 @@ belongs in its `.claude/wave-profile.md`.
 clone and publish from there:
 
 ```bash
-cp ~/.claude/skills/wave-prep/SKILL.md ~/agent-skills/skills/wave-prep/SKILL.md
-bash ~/agent-skills/scripts/publish.sh "update wave-prep"
+cp ~/.claude/skills/wave-prep/SKILL.md ~/waveflow/skills/wave-prep/SKILL.md
+bash ~/waveflow/scripts/publish.sh "update wave-prep"
 ```
 
 **A publish denylist keeps private projects out** — see
@@ -475,13 +504,13 @@ bash ~/agent-skills/scripts/publish.sh "update wave-prep"
    ```
 2. Create it in the repo (or move it there, then re-link):
    ```bash
-   mkdir -p ~/agent-skills/skills/<skill-name>
-   cp ~/.claude/skills/<skill-name>/SKILL.md ~/agent-skills/skills/<skill-name>/SKILL.md
-   bash ~/agent-skills/scripts/link-skills.sh
+   mkdir -p ~/waveflow/skills/<skill-name>
+   cp ~/.claude/skills/<skill-name>/SKILL.md ~/waveflow/skills/<skill-name>/SKILL.md
+   bash ~/waveflow/scripts/link-skills.sh
    ```
 3. Publish:
    ```bash
-   bash ~/agent-skills/scripts/publish.sh "add <skill-name> skill"
+   bash ~/waveflow/scripts/publish.sh "add <skill-name> skill"
    ```
 
 The `skills` CLI discovers any `SKILL.md` under `skills/` automatically — no registration step.
@@ -513,8 +542,8 @@ stack and repo specifics — an agent that names your framework belongs in your 
 start). Run the suite before publishing — it is what CI runs:
 
 ```bash
-cd ~/agent-skills && make test                      # ARGS="harness/tests/test_publish.py" narrows it
-make lint                                           # ruff over harness/ and the wave-prep scripts
+cd ~/waveflow && make test                      # ARGS="harness/tests/test_publish.py" narrows it
+make lint                                           # ruff check + format --check, rules in ruff.toml
 ```
 
 Adding a rule to `guard_bash.py`:

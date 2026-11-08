@@ -70,6 +70,7 @@ def _check(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
         timeout=SUBPROCESS_HANG_BUDGET_SECONDS,
+        check=False,
     )
 
 

@@ -5,7 +5,7 @@
   "author": {
     "name": "Yurii Serhovskyi"
   },
-  "homepage": "https://github.com/serhovskyi/agent-skills",
+  "homepage": "https://github.com/serhovskyi/waveflow",
   "license": "MIT",
   "keywords": ["hooks", "guardrails", "git", "evidence", "shared-worktree", "harness"]
 }

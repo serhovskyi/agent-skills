@@ -56,7 +56,7 @@ def budget_line(index: Path | None, budget: int | None, hint: str = "") -> str |
 def git(cwd: str, *args: str) -> str:
     try:
         result = subprocess.run(
-            ["git", "-C", cwd, *args], capture_output=True, text=True, timeout=5
+            ["git", "-C", cwd, *args], capture_output=True, text=True, timeout=5, check=False
         )
         return result.stdout.strip() if result.returncode == 0 else ""
     except (OSError, subprocess.SubprocessError):

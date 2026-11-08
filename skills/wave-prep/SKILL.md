@@ -45,7 +45,7 @@ WP="$(dirname "$0")"   # or the skill's base directory as given to you
 "$WP/scripts/plan-probe"   docs/superpowers/plans/<wave>-{a0,a1,a2}.md --quiet
 ```
 
-`docs/superpowers/plans/` is where `superpowers:spec-driven-development` writes plans; every
+`docs/superpowers/plans/` is where `superpowers:writing-plans` writes plans; every
 path in this skill assumes it. A repo that keeps plans elsewhere substitutes its own
 directory throughout — nothing else changes.
 

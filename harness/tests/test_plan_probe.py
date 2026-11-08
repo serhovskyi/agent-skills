@@ -44,6 +44,7 @@ def _probe(cwd: Path, plan: Path) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
         timeout=SUBPROCESS_HANG_BUDGET_SECONDS,
+        check=False,
     )
 
 

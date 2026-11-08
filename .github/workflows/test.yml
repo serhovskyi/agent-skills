@@ -14,3 +14,10 @@ jobs:
           python-version: "3.12"
       - run: pip install pytest
       - run: python -m pytest harness/tests -q
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/ruff-action@v3
+      - run: ruff format --check .

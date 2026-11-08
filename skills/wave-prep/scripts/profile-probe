@@ -34,7 +34,9 @@ FAILING = ("MISSING", "MOVED", "KEY", "AGENT", "TARGET", "SCRIPT")
 
 
 def git(root, *args):
-    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True)
+    return subprocess.run(
+        ["git", "-C", str(root), *args], capture_output=True, text=True, check=False
+    )
 
 
 class Tree:
@@ -126,8 +128,8 @@ def probe(profile_path, tree, quiet):
                 if tree.npm_scripts and script not in tree.npm_scripts:
                     rows.append(("SCRIPT", n, f"npm run {script}", "no package.json defines it"))
             words = token.split()
-            for word in words:
-                word = word.strip(".,;:()")
+            for raw_word in words:
+                word = raw_word.strip(".,;:()")
                 if word.startswith(("HEAD:", "-", "/", "~", "http")) or "=" in word:
                     continue
                 if (PATH_SHAPE.match(word) and "/" in word) or re.search(rf"\.(?:{EXT})$", word):
@@ -153,8 +155,10 @@ def probe(profile_path, tree, quiet):
     print(f"    needs a look: {failing}   unseen identifiers: {unseen}")
     print(
         "\nEvidence, not a verdict. MOVED: the path is gone and its tail lives elsewhere, or the\n"
-        "profile names it relative to a subdirectory — read the line. KEY/AGENT/TARGET/SCRIPT: the\n"
-        "address is gone. UNSEEN: a bare name nothing tracked mentions — a renamed gate, or a word\n"
+        "profile names it relative to a subdirectory — read the line. "
+        "KEY/AGENT/TARGET/SCRIPT: the\n"
+        "address is gone. UNSEEN: a bare name nothing tracked mentions — "
+        "a renamed gate, or a word\n"
         "from outside the repo (an env var, a tool's output). Read, then decide."
     )
     return 1 if failing else 0

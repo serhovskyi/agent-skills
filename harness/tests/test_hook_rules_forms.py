@@ -136,10 +136,10 @@ def test_an_ordinary_switch_is_allowed():
     [
         'bash scripts/publish.sh "wave-run: tighten the ledger"',
         "./scripts/publish.sh msg",
-        "~/agent-skills/scripts/publish.sh msg",
+        "~/waveflow/scripts/publish.sh msg",
         "sh -x scripts/publish.sh msg",
         "source scripts/publish.sh",
-        'cd ~/agent-skills && bash scripts/publish.sh "msg"',
+        'cd ~/waveflow && bash scripts/publish.sh "msg"',
     ],
 )
 def test_the_publish_script_is_refused_however_it_is_launched(command):

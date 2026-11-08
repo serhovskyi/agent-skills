@@ -345,7 +345,8 @@ def check_git(argv: list[str]) -> None:
         decide(
             "deny",
             "git-reset-hard",
-            "`git reset --hard` discards uncommitted work. Commit your own paths first: `git commit -m '...' -- <paths>`.",
+            "`git reset --hard` discards uncommitted work. "
+            "Commit your own paths first: `git commit -m '...' -- <paths>`.",
         )
 
     if sub == "clean" and any(f.startswith("-") and "f" in f for f in flags):
@@ -388,7 +389,8 @@ def check_git(argv: list[str]) -> None:
         decide(
             "deny",
             "git-restore",
-            "`git restore` overwrites the worktree copy. Commit your own paths first: `git commit -- <paths>`.",
+            "`git restore` overwrites the worktree copy. "
+            "Commit your own paths first: `git commit -- <paths>`.",
         )
 
     stash_args = [a for a in argv[sub_index + 1 :] if not a.startswith("-")]
@@ -627,7 +629,7 @@ def judge(payload: dict) -> None:
     if not command:
         return
 
-    global RULES
+    global RULES  # noqa: PLW0603 — the check_* functions read the repo rules at module scope
     config, error = repo_config.load_checked(payload.get("cwd"))
     RULES = RepoRules(config)
     check_config(error)

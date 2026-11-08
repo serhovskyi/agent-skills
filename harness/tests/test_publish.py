@@ -48,6 +48,9 @@ class Clone:
         self.write("README.md", "readme\n")
         self.write("LICENSE", "license\n")
         self.write(".gitignore", "*.log\n")
+        self.write("Makefile", "test:\n\ttrue\n")
+        self.write("ruff.toml", "line-length = 100\n")
+        self.write("package.json", "{}\n")
         (self.path / "scripts" / "publish.sh").write_bytes(PUBLISH.read_bytes())
         self.git("add", "-A")
         self.git("commit", "-q", "-m", "base")
@@ -84,6 +87,7 @@ class Clone:
             capture_output=True,
             text=True,
             timeout=SUBPROCESS_HANG_BUDGET_SECONDS,
+            check=False,
         )
 
     def edit_tracked(self) -> None:
@@ -272,6 +276,7 @@ class LinkedClone:
             capture_output=True,
             text=True,
             timeout=SUBPROCESS_HANG_BUDGET_SECONDS,
+            check=False,
         )
 
     def commands(self, event: str | None = None) -> list[str]:
@@ -293,6 +298,7 @@ class LinkedClone:
             capture_output=True,
             text=True,
             timeout=SUBPROCESS_HANG_BUDGET_SECONDS,
+            check=False,
         )
 
 
